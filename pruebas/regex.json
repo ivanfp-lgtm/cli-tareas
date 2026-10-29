@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "acciones": [
+    {
+      "nombre": "ordenar-documentos",
+      "descripcion": "Mueve los PDF y documentos de Descargas a una carpeta de Documentos/PDF",
+      "tipo": "mover",
+      "origen": "~/pruebas-tareas/Descargas",
+      "filtro": {
+        "extensiones": [
+          ".pdf",
+          ".docx"
+        ]
+      },
+      "destino": "~/pruebas-tareas/Documentos/PDF"
+    },
+    {
+      "nombre": "renombrar-fotos-movil",
+      "descripcion": "Renombra las fotos del móvil (IMG_/PXL_) con su fecha: 2026-10-29_001.jpg",
+      "tipo": "renombrar",
+      "origen": "~/pruebas-tareas/Movil",
+      "filtro": {
+        "extensiones": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".jpe"
+        ],
+        "patron_nombre": "*.tmp"
+      },
+      "plantilla": "{fecha:%Y-%m-%d}_{n:03}{ext}"
+    },
+    {
+      "nombre": "limpiar-capturas-viejas",
+      "descripcion": "Borra las capturas de pantalla .png con más de 30 días",
+      "tipo": "borrar",
+      "origen": "~/pruebas-tareas/Capturas",
+      "filtro": {
+        "patron": "^captura.*\\.png$",
+        "mas_antiguo_que_dias": 30
+      },
+      "confirmar": true
+    }
+  ]
+}
