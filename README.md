@@ -11,17 +11,23 @@ Mi herramienta de línea de órdenes para automatizar tareas repetitivas con fic
 6. **Mis 3 acciones (borrador):** ordenar-documentos, renombrar-fotos-movil, limpiar-capturas-viejas.
 7. **Nunca hará:** borrar sin preguntar ni tocar ficheros fuera de la carpeta que le indique.
 8. **Plataformas:** Linux primero; también Windows y macOS.
-9. **Códigos de salida:** 0 bien · 1 fallo al ejecutar · 2 uso incorrecto · 3 configuración inválida.
-10. **Instalación:** `uv tool install --editable .` (lo completo en la semana 4).
+9. **Códigos de salida:** 0 bien · 1 fallo al ejecutar · 2 uso incorrecto · 3 configuración inválida · 4 sin IA disponible (sin clave, sin red o servidor caído).
+10. **Instalación:** `uv tool install --editable .` (desarrollo) o `uv tool install git+https://github.com/ivanfp-lgtm/cli-tareas` (desde GitHub).
 
 ## Instalación
 
+Necesitas [uv](https://docs.astral.sh/uv/) (instala Python solo si hace falta).
+
 ```bash
-uv tool install --editable .   # dentro de la carpeta cli-tareas
-tareas --help                  # ya funciona en cualquier carpeta
+# desde GitHub, con una orden (o usa una URL con @v1.0.0 para congelar la versión)
+uv tool install git+https://github.com/ivanfp-lgtm/cli-tareas
+tareas --help
+tareas version        # debe decir: tareas 1.0.0
 ```
 
+Mientras desarrollo, desde la carpeta del repo: `uv tool install --editable .`.
 Si `tareas` no se encuentra: `uv tool update-shell`, cierra la terminal y ábrela otra vez.
+Para desinstalar: `uv tool uninstall tareas`.
 
 ## Esquema de acciones.json
 
@@ -40,12 +46,15 @@ Fichero JSON en la raíz (o donde indiques con `--config RUTA`). El motor lo val
 |---------------|--------------------|-----------------|------------------------------------------------------------------|
 | `nombre`      | sí                 | texto sin espacios | Lo que escribes en `tareas ejecutar NOMBRE`. Único.          |
 | `descripcion` | sí                 | texto           | Lo que enseña `tareas acciones`.                               |
-| `tipo`        | sí                 | `mover`·`copiar`·`renombrar`·`borrar` | El motor elige la clase Python a partir de este campo. |
+| `tipo`        | sí                 | `mover`·`copiar`·`renombrar`·`borrar`·`resumir`·`renombrar-ia`·`clasificar` | El motor elige la clase Python a partir de este campo. |
 | `origen`      | no                 | ruta            | Carpeta por defecto si no pasas `CARPETA`. `~` se expande.     |
 | `filtro`      | no                 | objeto          | Qué ficheros se tocan. Sin filtro = todos (¡cuidado con borrar!). |
-| `destino`     | mover/copiar       | ruta            | A dónde van. Si no existe, se crea (solo al ejecutar de verdad). |
+| `destino`     | mover/copiar/clasificar | ruta       | A dónde van. Si no existe, se crea (solo al ejecutar de verdad). |
 | `plantilla`   | renombrar          | texto con huecos | El nombre nuevo: `{fecha:%Y-%m-%d}`, `{n:03}`, `{ext}`, `{nombre}`. |
-| `confirmar`   | no (borrar: sí)    | `true`/`false`  | Pide confirmación antes de actuar salvo que pases `--si`.      |
+| `confirmar`   | no (destructivas: recomendado `true`) | `true`/`false` | Pide confirmación antes de actuar salvo que pases `--si`. |
+| `instrucciones` | no (solo IA)      | texto           | El prompt de esa acción: lo que le pides al modelo. Configuración, no código. |
+| `max_caracteres` | no (solo IA)     | entero 500–50000 | Tope de texto del documento que se manda al modelo (por defecto 12000). |
+| `categorias`  | clasificar         | lista de textos | Las únicas respuestas válidas del modelo; lo demás va a `sin-clasificar`. |
 
 ### Filtros (dentro de `filtro`; si pones varios, se cumplen TODOS)
 
@@ -59,15 +68,48 @@ Fichero JSON en la raíz (o donde indiques con `--config RUTA`). El motor lo val
 
 En JSON la barra invertida de las regex se escribe doble (`"\\.png$"`).
 
+### Acciones con IA (semana 3)
+
+Los tipos `resumir`, `renombrar-ia` y `clasificar` preguntan a un modelo del centro
+(la misma API que usa OpenCode). Cómo funcionan:
+
+- La petición va en tres capas: el **sistema** (lo fija el código: reglas de formato y la
+  frontera `<documento>…</documento>`), tus **instrucciones** (esto es configuración: se
+  cambian en el JSON, sin tocar Python) y el **documento** (leído con `pypdf` si es PDF).
+- `--simular` **no llama al modelo**: la tabla dice cuántos caracteres mandaría (~tokens).
+- Lo que responde el modelo es una entrada más: `renombrar-ia` lo pasa por `a_nombre_seguro`
+  (sin tildes, solo `[a-z0-9-]`, fuera la extensión, 60 caracteres) y `clasificar` solo
+  acepta sus `categorias`; lo demás va a `sin-clasificar`.
+- Como el modelo no es determinista, en acciones IA que cambian ficheros `confirmar` vale `true`.
+
+### La IA y el modo sin red
+
+La clave nunca está en el repo. Dos formas de configurarla (mira `.env.example`):
+
+1. Exportando en tu terminal: `CENTRO_IA_URL`, `CENTRO_IA_KEY` y, si hace falta,
+   `CENTRO_IA_CA` (certificado del instituto) y `CENTRO_IA_MODELO`.
+2. `cp .env.example .env` y rellenarlo (`.env` está en `.gitignore` desde el primer commit).
+
+`uv run tareas comprobar-ia` dice servidor, modelo y «clave: definida» (la clave nunca se
+imprime) y hace una pregunta mínima al modelo. Si no hay clave, no hay red o el servidor
+falla, las acciones con IA salen con **código 4** y un mensaje humano, y **las acciones sin
+IA siguen funcionando**.
+
 ### Notas de comportamiento
 
-- `--simular` enseña la misma tabla sin tocar NADA del disco (ni crea carpetas).
+- `--simular` enseña la misma tabla sin tocar NADA del disco (ni crea carpetas, ni llama al modelo).
 - Nunca se sobrescribe: si el destino existe (o ya está reservado en la misma simulación) se añade el sufijo ` (1)`, ` (2)`…
 - Al renombrar, si el nombre nuevo coincide con el actual, el fichero se marca `saltado`.
-- Códigos de salida: `0` bien · `1` fallo al ejecutar · `2` error de uso (lo pone Typer) · `3` configuración inválida.
+- Códigos de salida: `0` bien · `1` fallo al ejecutar · `2` error de uso (lo pone Typer) · `3` configuración inválida · `4` sin IA disponible.
 
-## Mejoras apuntadas (para semanas futuras)
+## Primeros pasos
+
+1. Copia `acciones.json` de este repo en tu carpeta y cambia las rutas por las tuyas.
+2. Comprueba que está bien: `tareas validar`
+3. Mira qué haría, sin tocar nada: `tareas ejecutar ordenar-documentos --simular`
+4. ¿IA? `tareas comprobar-ia` y después `tareas ejecutar resumir-apuntes --simular`.
+
+## Mejoras apuntadas (para el futuro)
 
 - Progreso con barra Rich cuando hay muchos ficheros.
-- Orden `tareas deshacer` con un registro de lo hecho (semana 4+).
-- Acción con IA que clasifique por contenido (semana 3).
+- Orden `tareas deshacer` con un registro de lo hecho.
