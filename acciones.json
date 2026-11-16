@@ -24,6 +24,34 @@
             "origen": "~/pruebas-tareas/Capturas",
             "filtro": { "patron": "^captura.*\\.png$", "mas_antiguo_que_dias": 30 },
             "confirmar": true
+        },
+        {
+            "nombre": "resumir-apuntes",
+            "descripcion": "Resume cada PDF o texto de apuntes en un .md para estudiar",
+            "tipo": "resumir",
+            "origen": "~/pruebas-tareas/Apuntes",
+            "filtro": { "extensiones": [".pdf", ".txt", ".md"] },
+            "destino": "~/pruebas-tareas/Resúmenes",
+            "instrucciones": "Resume en 5 viñetas como máximo. Acaba con una línea que empiece por «Para el examen:» y diga, en una frase, lo que más cuenta.",
+            "max_caracteres": 12000
+        },
+        {
+            "nombre": "renombrar-descargas-confusas",
+            "descripcion": "Pone a los PDF de Descargas con nombres genéricos un nombre que diga lo que son",
+            "tipo": "renombrar-ia",
+            "origen": "~/pruebas-tareas/Descargas",
+            "filtro": { "extensiones": [".pdf"], "patron": "^(escaneo|scan|documento|descarga|sin\\s*t[íi]tulo)" },
+            "confirmar": true
+        },
+        {
+            "nombre": "clasificar-apuntes",
+            "descripcion": "Mueve cada PDF de apuntes a la carpeta de su asignatura",
+            "tipo": "clasificar",
+            "origen": "~/pruebas-tareas/Apuntes",
+            "filtro": { "extensiones": [".pdf"] },
+            "categorias": ["sistemas", "redes", "linux", "otros"],
+            "destino": "~/pruebas-tareas/Asignaturas",
+            "confirmar": true
         }
     ]
 }
