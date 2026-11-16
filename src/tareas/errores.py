@@ -21,3 +21,9 @@ class AccionNoValida(ConfigError):
         super().__init__(f"Acción «{accion}», campo «{campo}»: {motivo}")
         self.accion = accion
         self.campo = campo
+
+
+class IANoDisponible(TareasError):
+    """Sin clave, sin red o el servidor de IA no responde: las acciones sin IA siguen."""
+
+    codigo_salida = 4
