@@ -8,3 +8,7 @@ dist/
 
 # Secretos: claves de API y configuración privada. NUNCA al repo.
 .env
+
+# Caché de pytest
+.pytest_cache/
+.coverage
