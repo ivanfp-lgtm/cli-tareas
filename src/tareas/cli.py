@@ -10,8 +10,9 @@ from rich.markup import escape
 from rich.table import Table
 
 from tareas import __version__
-from tareas.config import cargar
-from tareas.errores import TareasError
+from tareas.config import TIPOS_IA, cargar
+from tareas.errores import IANoDisponible, TareasError
+from tareas.ia import ProveedorCentro
 from tareas.motor import Motor
 
 app = typer.Typer(
@@ -21,6 +22,21 @@ app = typer.Typer(
 )
 consola = Console(highlight=False)
 consola_err = Console(stderr=True, highlight=False)
+
+
+def fallo(e: TareasError) -> None:
+    """Un error previsible: una línea en rojo, sin traza, y su código de salida."""
+    consola_err.print(f"[red]✘ {escape(str(e))}[/red]")
+    if isinstance(e, IANoDisponible):
+        consola_err.print(
+            "Las acciones sin IA siguen funcionando: mira cuáles son con «tareas acciones»."
+        )
+    raise typer.Exit(e.codigo_salida)
+
+
+def proveedor_desde_entorno() -> ProveedorCentro:
+    """Fábrica aparte para poder cambiarla en las pruebas."""
+    return ProveedorCentro.desde_entorno()
 
 
 def tamano_legible(n: int) -> str:
@@ -101,9 +117,22 @@ def validar(
     try:
         acciones = cargar(ctx.obj)
     except TareasError as e:
-        consola_err.print(f"[red]✘ {escape(str(e))}[/red]")
-        raise typer.Exit(code=e.codigo_salida)
+        fallo(e)
     consola.print(f"[green]✔ {len(acciones)} acciones válidas[/green]")
+
+
+@app.command("comprobar-ia")
+def comprobar_ia() -> None:
+    """Comprueba la conexión con el servidor de IA (sin enseñar la clave)."""
+    try:
+        proveedor = ProveedorCentro.desde_entorno()
+        consola.print(
+            f"Servidor: {proveedor.url}  ·  modelo: {proveedor.modelo}  ·  clave: definida"
+        )
+        r = proveedor.completar("Responde solo con la palabra: ok", "¿Me oyes?", max_tokens=5)
+    except TareasError as e:
+        fallo(e)
+    consola.print(f"[green]✔ El modelo responde «{escape(r.texto)}» en {r.segundos:.1f} s[/green]")
 
 
 @app.command()
@@ -114,15 +143,18 @@ def acciones(
     try:
         lista = cargar(ctx.obj)
     except TareasError as e:
-        consola_err.print(f"[red]✘ {escape(str(e))}[/red]")
-        raise typer.Exit(code=e.codigo_salida)
+        fallo(e)
 
     tabla = Table(title=f"Acciones de {escape(str(ctx.obj))}")
     tabla.add_column("Nombre")
     tabla.add_column("Tipo")
+    tabla.add_column("IA")
     tabla.add_column("Descripción")
     for a in lista:
-        tabla.add_row(escape(a["nombre"]), escape(a["tipo"]), escape(a["descripcion"]))
+        ia = "sí" if a["tipo"] in TIPOS_IA else "—"
+        tabla.add_row(
+            escape(a["nombre"]), escape(a["tipo"]), ia, escape(a["descripcion"])
+        )
     consola.print(tabla)
 
 
@@ -140,9 +172,13 @@ def pintar_tabla(resultados: list, simular: bool) -> None:
     tabla.add_column("Fichero")
     tabla.add_column("Destino")
     tabla.add_column("Estado")
+    tabla.add_column("Detalle")
     for r in resultados:
         destino = str(r.destino) if r.destino else "—"
-        tabla.add_row(escape(r.origen.name), escape(destino), escape(r.estado))
+        detalle = getattr(r, "detalle", "") or "—"
+        tabla.add_row(
+            escape(r.origen.name), escape(destino), escape(r.estado), escape(detalle)
+        )
     consola.print(tabla)
     consola.print(
         f"{len(resultados)} ficheros · {hechos} hechos · {simulados} simulados · {saltados} saltados"
@@ -171,12 +207,20 @@ def ejecutar(
     try:
         motor = Motor(cargar(ctx.obj))
         accion = motor.acciones.get(nombre)
-        if accion and accion.destructiva and accion.config.get("confirmar", True) and not simular and not si:
-            typer.confirm(f"«{nombre}» borra ficheros. ¿Seguro?", abort=True)
+        if accion and accion.necesita_ia and not simular:
+            # solo si hace falta: --simular y las acciones sin IA no tocan la red
+            motor.proveedor = proveedor_desde_entorno()
+        if (
+            accion
+            and accion.destructiva
+            and accion.config.get("confirmar", True)
+            and not simular
+            and not si
+        ):
+            typer.confirm(f"«{nombre}» cambia o borra ficheros. ¿Seguro?", abort=True)
         resultados = motor.ejecutar(nombre, carpeta, simular)
     except TareasError as e:
-        consola_err.print(f"[red]✘ {escape(str(e))}[/red]")
-        raise typer.Exit(code=e.codigo_salida)
+        fallo(e)
     except typer.Abort:
         consola.print("Cancelado: no se ha tocado nada.")
         raise typer.Exit(code=1)
