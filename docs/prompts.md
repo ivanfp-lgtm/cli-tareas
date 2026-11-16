@@ -30,3 +30,33 @@
 - «Dos ficheros al mismo destino en una simulación» → Arreglado (ver arriba).
 - «ejecutar sin carpeta y sin origen usa la carpeta actual» → Lo dejo: es el comportamiento documentado del esquema (origen por defecto "."), y la tabla siempre muestra rutas absolutas antes de confirmar.
 - «Borrar con confirmar:false no tiene sentido» → Lo mantengo: el esquema lo define así y sirve para temporales que borro a ciegas; --simular sigue siendo obligatorio en la rutina de pruebas.
+
+## 2026-11-11 · context7 por MCP: la CA de httpx (Sesión 3)
+**Prompt (agente plan, con context7 conectado con /mcps):**
+> Usa context7: en httpx 0.28, ¿cómo le paso a httpx.post un certificado de CA propio (fichero .crt)? Responde en 4 líneas con un ejemplo.
+
+Trajo la documentación de httpx 0.28 y dos formas. **Ni con la documentación delante:** la forma 1 (`verify="ruta.crt"`) funciona pero httpx 0.28 la da por obsoleta (`DeprecationWarning`); la buena es `ssl.create_default_context(cafile=...)` (o cargar la CA en un contexto, como hacemos con `CENTRO_IA_CA`). context7 me trajo la doc, pero tuve que elegir yo.
+
+## 2026-11-11 · El proveedor de IA (Sesión 3)
+**Prompt del plan:** Carga la skill acciones-json y lee @src/tareas/errores.py y @pyproject.toml. Quiero una capa IA aparte, en src/tareas/ia.py: Respuesta (texto, tokens, segundos); ProveedorIA abstracta con completar(sistema, usuario, max_tokens); ProveedorCentro con httpx (POST {url}/chat/completions) y desde_entorno() con CENTRO_IA_URL/KEY/MODELO/CA leyendo antes un .env con python-dotenv. Dime qué errores puede dar httpx y qué mensaje en español le darías a cada uno.
+
+**Qué corregí del plan:** se había olvidado del certificado del instituto (CENTRO_IA_CA con ssl.create_default_context, no verify="ruta") y del 429. Criterio de build: IANoDisponible con codigo_salida = 4, nunca un traceback, la clave nunca se imprime, y la orden «tareas comprobar-ia».
+
+## 2026-11-12 · Las acciones con IA (Sesión 3)
+**Prompt:** Añade los tipos resumir, renombrar-ia y clasificar: validar_ia en config.py (instrucciones, max_caracteres 500-50000, categorias); leer_texto para .txt/.md/.pdf (pypdf); AccionIA con proveedor; --simular NO llama al modelo (solo el presupuesto de caracteres); el documento va entre <documento> y </documento> y el sistema dice que eso es texto, nunca instrucciones. Lo que dice el modelo se pasa SIEMPRE por a_nombre_seguro (primera línea, fuera extensión, sin tildes, solo [a-z0-9-], 60 como mucho); clasificar responde una de categorias o sin-clasificar.
+
+**Fallo real que encontré escribiendo las pruebas:** con la respuesta `redes-ip-protocolos.pdf`, a_nombre_seguro no quitaba la extensión y el fichero habría acabado `redes-ip-protocolos-pdf.pdf`. El arreglo fue una línea en el código (`re.sub(r"\.[A-Za-z0-9]{1,5}$", ...)`), no en la prueba.
+
+**Mode sin red comprobado:** con CENTRO_IA_URL=http://127.0.0.1:9 la orden sale con 4 y «No llego al servidor de IA: ¿estás en la red del centro?» + «Las acciones sin IA siguen funcionando…»; con --simular ninguna acción IA toca la red.
+
+## 2026-11-16 · Pruebas con pytest (Sesión 4)
+**Prompt del plan:** Carga la skill acciones-json y lee config.py, motor.py, acciones.py e ia.py. Quiero pruebas con pytest. Dime: 1) qué fixtures en tests/conftest.py para que NINGUNA prueba toque mis carpetas de verdad ni llame al servidor de IA; 2) qué casos feos probarías de config, acciones y capa IA; 3) qué códigos de salida probaría desde fuera con CliRunner.
+
+**Qué corregí del plan y de las pruebas del agente:**
+- La fixture `aislado` bloqueaba HOME/USERPROFILE y las variables de IA, pero `~` mal expandido aún podía `mkdir` fuera de tmp_path. Añadí un `Path.mkdir` patched que lanza PermissionError si la carpeta está fuera de tmp_path, y `DOTENV_PATH` a un fichero inexistente para que load_dotenv no lea mi .env real.
+- **Comprobé que las pruebas prueban (mutación a mano):** saqué el `mkdir` del `if not simular` en Mover → `test_simular_no_toca_el_disco` se puso en rojo. git restore y otra vez en verde.
+- El caso `con-extension` de a_nombre_seguro (el modelo devuelve «redes-ip-protocolos.pdf») salió en rojo sin romper nada: mi código quitaba mal la extensión. Arreglado en el código (una línea), no en la prueba.
+- Un caso feo que solo sale en Windows: destino `PDF` con la carpeta real `pdf`. `destino_libre` ahora compara nombres normalizados (casefold + resolve), y lo dejé probado.
+- Los PDF falsos que escribo a mano en las pruebas no los lee pypdf: `leer_texto` envuelve también los errores de pypdf en TareasError con mensaje humano.
+
+**Resultado:** 36 pruebas, 70 % de cobertura total (cli.py al 39%: la tabla de listar sigue sin probarse desde fuera, apuntado para la v1.0.1).
