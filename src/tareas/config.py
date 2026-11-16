@@ -8,9 +8,15 @@ from pathlib import Path
 
 from .errores import AccionNoValida, ConfigError
 
-TIPOS = {"mover", "copiar", "renombrar", "borrar"}
+TIPOS = {"mover", "copiar", "renombrar", "borrar", "resumir", "renombrar-ia", "clasificar"}
+TIPOS_IA = {"resumir", "renombrar-ia", "clasificar"}
 OBLIGATORIOS = ["nombre", "descripcion", "tipo"]
-POR_TIPO = {"mover": "destino", "copiar": "destino", "renombrar": "plantilla"}
+POR_TIPO = {
+    "mover": "destino",
+    "copiar": "destino",
+    "renombrar": "plantilla",
+    "clasificar": "categorias",
+}
 CAMPOS_ACCION = {
     "nombre",
     "descripcion",
@@ -20,6 +26,9 @@ CAMPOS_ACCION = {
     "destino",
     "plantilla",
     "confirmar",
+    "instrucciones",
+    "max_caracteres",
+    "categorias",
 }
 FILTROS_VALIDOS = {"extensiones", "patron", "patron_nombre", "mas_antiguo_que_dias", "mayor_que_mb"}
 
@@ -65,6 +74,29 @@ def _validar_filtro(accion: dict, nombre: str) -> None:
             raise AccionNoValida(nombre, f"filtro.{clave}", "debe ser un número ≥ 0")
 
 
+def validar_ia(nombre: str, a: dict) -> None:
+    """Los campos de las acciones con IA: instrucciones, max_caracteres y categorias."""
+    if "instrucciones" in a and not isinstance(a["instrucciones"], str):
+        raise AccionNoValida(nombre, "instrucciones", "tiene que ser un texto")
+    tope = a.get("max_caracteres", 12000)
+    if not isinstance(tope, int) or isinstance(tope, bool) or not 500 <= tope <= 50000:
+        raise AccionNoValida(
+            nombre, "max_caracteres", "tiene que ser un entero entre 500 y 50000"
+        )
+    if "categorias" in a:
+        cats = a["categorias"]
+        if (
+            not isinstance(cats, list)
+            or not cats
+            or not all(isinstance(c, str) and c for c in cats)
+        ):
+            raise AccionNoValida(
+                nombre, "categorias", "tiene que ser una lista de textos no vacía"
+            )
+    if "destino" in a and not isinstance(a["destino"], str):
+        raise AccionNoValida(nombre, "destino", "debe ser un texto")
+
+
 def _validar_accion(accion: dict, vistos: set[str]) -> None:
     if not isinstance(accion, dict):
         raise ConfigError("Cada acción debe ser un objeto con campos")
@@ -96,6 +128,10 @@ def _validar_accion(accion: dict, vistos: set[str]) -> None:
         raise AccionNoValida(
             nombre, extra, f"es obligatorio en acciones de tipo {tipo}"
         )
+    if tipo == "clasificar" and not accion.get("destino"):
+        raise AccionNoValida(
+            nombre, "destino", "es obligatorio en acciones de tipo clasificar"
+        )
     if tipo == "renombrar":
         plantilla = accion["plantilla"]
         if not isinstance(plantilla, str):
@@ -113,6 +149,8 @@ def _validar_accion(accion: dict, vistos: set[str]) -> None:
         accion["confirmar"], bool
     ):
         raise AccionNoValida(nombre, "confirmar", "debe ser true o false")
+    if tipo in TIPOS_IA:
+        validar_ia(nombre, accion)
     _validar_filtro(accion, nombre)
 
 

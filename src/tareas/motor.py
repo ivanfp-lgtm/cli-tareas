@@ -5,13 +5,18 @@ import re
 import time
 from pathlib import Path
 
-from .acciones import Accion, Resultado
+from .acciones import Accion, AccionIA, Resultado
 from .errores import TareasError
+from .ia import ProveedorIA
 
 
 class Motor:
-    def __init__(self, acciones: list[dict]):
+    proveedor: ProveedorIA | None = None  # el lo pone la CLI solo si hace falta
+
+    def __init__(self, acciones: list[dict], proveedor: ProveedorIA | None = None):
         self.acciones = {a["nombre"]: Accion.desde_config(a) for a in acciones}
+        if proveedor is not None:
+            self.proveedor = proveedor
 
     @staticmethod
     def seleccionar(carpeta: Path, filtro: dict) -> list[Path]:
@@ -56,4 +61,6 @@ class Motor:
         if not carpeta.is_dir():
             raise TareasError(f"La carpeta {carpeta} no existe")
         ficheros = self.seleccionar(carpeta, accion.config.get("filtro", {}))
+        if isinstance(accion, AccionIA) and self.proveedor is not None:
+            accion.proveedor = self.proveedor
         return accion.ejecutar(ficheros, simular)
