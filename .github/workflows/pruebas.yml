@@ -1,0 +1,20 @@
+# .github/workflows/pruebas.yml
+name: Pruebas
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pruebas:
+    strategy:
+      fail-fast: false # si falla un sistema, los otros dos siguen y ves todos los resultados
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest] # la misma prueba, tres veces
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5 # trae el repo a la máquina
+      - uses: astral-sh/setup-uv@v6 # instala uv y Python
+        with:
+          python-version: "3.12"
+      - run: uv run pytest -v # lo mismo que en mi terminal; si sale != 0, se pone en rojo
