@@ -65,9 +65,29 @@ def test_renombrar_con_plantilla(descargas):
         filtro={"extensiones": [".jpg", ".png"]},
         plantilla="foto-{n:03}{ext}",
     )
-    motor.ejecutar("prueba", descargas, simular=False)
+    resultados = motor.ejecutar("prueba", descargas, simular=False)
     assert (descargas / "foto-001.jpg").exists()
     assert (descargas / "foto-002.png").exists()
+    # en Windows el patrón no distingue mayúsculas: «FOTO1.JPG» y
+    # «cumpleaños 2.png» tienen nombres BASE distintos y caben los dos
+    assert not (descargas / "foto-001 (1).jpg").exists()
+    assert not (descargas / "foto-002 (1).png").exists()
+
+
+def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
+    # «FOTO1.JPG» → «foto-001.jpg»: en Linux son nombres distintos y se
+    # renombraría; en Windows son EL MISMO nombre y no es una colisión
+    assert not (descargas / "foto-001.jpg").exists()
+    motor = motor_con(
+        tipo="renombrar",
+        filtro={"patron_nombre": "^FOTO"},
+        plantilla="foto-001{ext}",
+    )
+    resultados = motor.ejecutar("prueba", descargas, simular=False)
+    r = resultados[0]
+    # ni colisión ni « (1)»: o renombrado (Linux/macOS) o saltado (Windows)
+    assert r.estado in ("hecho", "saltado")
+    assert " (1)" not in (r.destino.name if r.destino else "")
 
 
 def test_la_accion_inexistente_da_error_claro(descargas):

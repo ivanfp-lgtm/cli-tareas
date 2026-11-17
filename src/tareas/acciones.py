@@ -27,38 +27,36 @@ def destino_libre(destino: Path, reservados: set[Path] | None = None) -> Path:
     """Nunca sobrescribe: si existe, prueba 'nombre (1).ext', 'nombre (2).ext'...
 
     «reservados» evita colisiones dentro de una misma simulación, donde el
-    primer destino aún no existe en el disco. Compara nombres normalizados:
-    en Windows (y al mirar mi carpeta desde Linux) «PDF» y «pdf» son la misma
-    carpeta, y Path() no lo sabe.
+    primer destino aún no existe en el disco.
+
+    Compara EXACTO, sin mirar mayúsculas. Antes se comparaba con casefold
+    «por si acaso, Windows», y ahí estaban los dos bugs: un rename de
+    mayúsculas («FOTO1.JPG» → «foto1.jpg») se creía colisión y se mandaba a
+    « (1)»… encima el rename en Windows con el nombre exacto del que ya está
+    FALLA, así que se aplastaba el destino. La norma «nunca sobrescribir» la
+    cumplen los códigos de error del sistema operativo (FileExistsError /
+    EEXIST → lo contamos como TareasError); el casefold aquí sobraba.
+    Lo de «PDF» y «pdf» como carpetas sigue cubierto: Path.mkdir no falla si
+    la carpeta ya existe con otro juego de mayúsculas, y si el destino
+    existiera de verdad, shutil o rename petarían y lo traducimos.
     """
     reservados = reservados or set()
-    clave = destino.parent.resolve().joinpath(destino.name).as_posix().casefold()
-    claves_reservadas = {
-        r.parent.resolve().joinpath(r.name).as_posix().casefold() for r in reservados
-    }
-    if clave not in claves_reservadas and not existe_ignorando_mayusculas(destino):
+    if not esta_reservado(destino, reservados) and not destino.exists():
         return destino
     n = 1
     while True:
         libre = destino.with_name(f"{destino.stem} ({n}){destino.suffix}")
-        clave = libre.parent.resolve().joinpath(libre.name).as_posix().casefold()
-        if clave not in claves_reservadas and not existe_ignorando_mayusculas(libre):
+        if not esta_reservado(libre, reservados) and not libre.exists():
             return libre
         n += 1
 
 
-def existe_ignorando_mayusculas(ruta: Path) -> bool:
-    """True si el fichero existe, o existe con otro juego de mayúsculas (Windows)."""
-    if ruta.exists():
-        return True
-    padre = ruta.parent
-    if not padre.is_dir():
-        return False
+def esta_reservado(destino: Path, reservados: set[Path]) -> bool:
     try:
-        objetivos = {p.name.casefold() for p in padre.iterdir()}
+        aqui = destino.resolve().as_posix()
     except OSError:
         return False
-    return ruta.name.casefold() in objetivos
+    return any(r.resolve().as_posix() == aqui for r in reservados)
 
 
 class Accion(ABC):
@@ -149,7 +147,7 @@ class Renombrar(Accion):
         nuevo = self._nombre_nuevo(fichero, n)
         if nuevo == fichero.name:
             return Resultado(fichero, None, "saltado")
-        destino = destino_libre(fichero.with_name(nuevo), reservados)
+        destino = destino_libre(fichero.with_name(nuevo), reservados | {fichero})
         if not simular:
             try:
                 fichero.rename(destino)
@@ -263,11 +261,14 @@ class RenombrarIA(AccionIA):
         nombre = a_nombre_seguro(r.texto)
         if not nombre or nombre + fichero.suffix.lower() == fichero.name:
             return Resultado(fichero, None, "saltado", "sin nombre válido o ya se llamaba así")
-        destino = destino_libre(fichero.with_name(nombre + fichero.suffix.lower()), reservados)
-        try:
-            fichero.rename(destino)
-        except OSError as e:
-            raise TareasError(f"No puedo renombrar «{fichero.name}»: {e}") from e
+        destino = destino_libre(
+            fichero.with_name(nombre + fichero.suffix.lower()), reservados | {fichero}
+        )
+        if not simular:
+            try:
+                fichero.rename(destino)
+            except OSError as e:
+                raise TareasError(f"No puedo renombrar «{fichero.name}»: {e}") from e
         return Resultado(fichero, destino, "hecho", r.resumen())
 
 
