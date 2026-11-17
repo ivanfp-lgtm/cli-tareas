@@ -9,5 +9,5 @@
 - Mensajes y comentarios en español; código claro antes que listo.
 - pathlib siempre, encoding="utf-8", nada de os.system ni shell=True: tiene que funcionar en Linux, Windows y macOS.
 - Nunca ejecutes acciones sobre carpetas reales: solo en ~/pruebas-tareas y con --simular.
-- No toques .env ni escribas claves en ningún fichero. No hagas git push ni commits: los hace el alumno.
+- No toques .env ni escribas claves en ningún fichero. Los commits los hace el alumno; en la semana 4 (release v1.0.0) se autoriza a opencode a hacer el push, la rama release-1.0, la etiqueta v1.0.0 y la release en GitHub.
 - Antes de cambiar un fichero, explica en 2-3 líneas qué vas a hacer.
