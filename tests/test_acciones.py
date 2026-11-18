@@ -75,19 +75,20 @@ def test_renombrar_con_plantilla(descargas):
 
 
 def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
-    # «FOTO1.JPG» → «foto-001.jpg»: en Linux son nombres distintos y se
-    # renombraría; en Windows son EL MISMO nombre y no es una colisión
-    assert not (descargas / "foto-001.jpg").exists()
+    # «FOTO1.JPG» → «foto1.JPG» es el mismo fichero en Windows. En Linux
+    # (donde corren las pruebas) se renombraría: lo que NO puede pasar es
+    # que se mande a « (1)», que era el bug del casefold en destino_libre.
     motor = motor_con(
         tipo="renombrar",
-        filtro={"patron_nombre": "^FOTO"},
-        plantilla="foto-001{ext}",
+        filtro={"patron_nombre": "^FOTO1$"},
+        plantilla="{nombre}{ext}",
     )
     resultados = motor.ejecutar("prueba", descargas, simular=False)
     r = resultados[0]
-    # ni colisión ni « (1)»: o renombrado (Linux/macOS) o saltado (Windows)
-    assert r.estado in ("hecho", "saltado")
-    assert " (1)" not in (r.destino.name if r.destino else "")
+    assert r.estado == "hecho"
+    assert r.destino.name.casefold() == "foto1.jpg"
+    assert (descargas / r.destino.name).exists()
+    assert not (descargas / "FOTO1.JPG").exists()
 
 
 def test_la_accion_inexistente_da_error_claro(descargas):

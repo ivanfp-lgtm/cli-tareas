@@ -52,11 +52,15 @@ def destino_libre(destino: Path, reservados: set[Path] | None = None) -> Path:
 
 
 def esta_reservado(destino: Path, reservados: set[Path]) -> bool:
+    """El camino EXACTO (sin resolve) y con mayúsculas: en Windows, si
+    destino y origen difieren solo en mayúsculas, resolve() los convierte en
+    el mismo camino y la comprobación volvería a creer que hay colisión.
+    Aquí «FOTO1.JPG» y «foto1.jpg» han de ser caminos DISTINTOS."""
     try:
-        aqui = destino.resolve().as_posix()
+        aqui = str(destino.absolute())
+        return any(str(r.absolute()) == aqui for r in reservados)
     except OSError:
         return False
-    return any(r.resolve().as_posix() == aqui for r in reservados)
 
 
 class Accion(ABC):
