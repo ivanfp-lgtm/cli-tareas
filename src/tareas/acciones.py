@@ -172,7 +172,11 @@ class Renombrar(Accion):
     tipo = "renombrar"
 
     def aplicar(self, fichero, n, simular, reservados):
-        nuevo = self._nombre_nuevo(fichero, n)
+        # La extensión viene SIEMPRE en minúsculas, con o sin plantilla: si no,
+        # en un disco que no distingue mayúsculas «FOTO-001.JPG» y el
+        # «foto-001.jpg» del siguiente fichero serían EL MISMO nombre y la
+        # norma «nunca sobrescribir» mandaría el segundo a « (1)».
+        nuevo = self._nombre_nuevo(fichero, n).replace(fichero.suffix, fichero.suffix.lower())
         if nuevo == fichero.name:
             return Resultado(fichero, None, "saltado")
         sin_caso = el_so_no_distingue_mayusculas(fichero.parent)

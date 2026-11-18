@@ -88,7 +88,7 @@ def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
     resultados = motor.ejecutar("prueba", descargas, simular=False)
     r = resultados[0]
     assert r.estado == "hecho"
-    assert r.destino.name == "FOTO1-nuevo.jpg"  # la plantilla pone {ext} en minúsculas
+    assert r.destino.name == "FOTO1-nuevo.jpg"  # la extensión, siempre en minúsculas
     assert (descargas / "FOTO1-nuevo.jpg").exists()
     assert not (descargas / "FOTO1.JPG").exists()
 
@@ -103,15 +103,22 @@ def test_cambio_de_mayusculas_es_un_rename_normal(descargas):
     motor = motor_con(
         tipo="renombrar",
         filtro={"patron_nombre": "^FOTO1$"},
-        plantilla="foto1.JPG",
+        plantilla="foto1.jpg",  # mismo nombre y misma extensión: un rename de mayúsculas
     )
     resultados = motor.ejecutar("prueba", descargas, simular=False)
     r = resultados[0]
-    assert r.estado == ("saltado" if caso else "hecho")
-    assert " (1)" not in (r.destino.name if r.destino else "")
-    if not caso:
-        assert (descargas / "foto1.JPG").exists()
+    if caso:
+        # El SO ve «foto1.jpg» ocupado por «FOTO1.JPG»: se marca «saltado»
+        # y el fichero no se toca. Es la ÚNICA forma segura, porque un
+        # rename con el nombre que solo difiere en mayúsculas PETA en
+        # Windows (lo probamos en Actions).
+        assert r.estado == "saltado"
+        assert (descargas / "FOTO1.JPG").exists()
+    else:
+        assert r.estado == "hecho"
+        assert (descargas / "foto1.jpg").exists()
         assert not (descargas / "FOTO1.JPG").exists()
+    assert " (1)" not in (r.destino.name if r.destino else "")
 
 
 def test_la_accion_inexistente_da_error_claro(descargas):
