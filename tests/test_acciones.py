@@ -1,4 +1,6 @@
 # tests/test_acciones.py: las acciones con ficheros reales, pero en tmp_path
+import os
+
 import pytest
 
 from tareas.errores import TareasError
@@ -75,18 +77,21 @@ def test_renombrar_con_plantilla(descargas):
 
 
 def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
-    # «FOTO1.JPG» → «foto1.JPG» es el mismo fichero en Windows. En Linux
-    # (donde corren las pruebas) se renombraría: lo que NO puede pasar es
-    # que se mande a « (1)», que era el bug del casefold en destino_libre.
+    # «FOTO1.JPG» → «foto1.JPG»: en Linux/macOS(%) son nombres distintos y se
+    # renombraría; en Windows y en macOS es EL MISMO fichero y se marca
+    # «saltado». Lo que NO puede pasar en ninguna plataforma es que se mande
+    # a « (1)», que era el bug del casefold en destino_libre.
+    caso = os.path.normcase("FOTO1.JPG") == "foto1.jpg"  # SO sin distinguir
     motor = motor_con(
         tipo="renombrar",
         filtro={"patron_nombre": "^FOTO1$"},
-        plantilla="{nombre}{ext}",
+        plantilla="{nombre}-nuevo{ext}",
     )
     resultados = motor.ejecutar("prueba", descargas, simular=False)
     r = resultados[0]
-    assert r.estado == "hecho"
-    assert r.destino.name.casefold() == "foto1.jpg"
+    assert r.estado == ("saltado" if caso else "hecho")
+    assert " (1)" not in (r.destino.name if r.destino else "")
+    assert r.destino.name.casefold() == "foto1-nuevo.jpg"
     assert (descargas / r.destino.name).exists()
     assert not (descargas / "FOTO1.JPG").exists()
 

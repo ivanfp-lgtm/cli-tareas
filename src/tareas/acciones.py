@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import unicodedata
@@ -41,26 +42,35 @@ def destino_libre(destino: Path, reservados: set[Path] | None = None) -> Path:
     existiera de verdad, shutil o rename petarían y lo traducimos.
     """
     reservados = reservados or set()
-    if not esta_reservado(destino, reservados) and not destino.exists():
+    if not esta_ocupado(destino, reservados):
         return destino
     n = 1
     while True:
         libre = destino.with_name(f"{destino.stem} ({n}){destino.suffix}")
-        if not esta_reservado(libre, reservados) and not libre.exists():
+        if not esta_ocupado(libre, reservados):
             return libre
         n += 1
 
 
-def esta_reservado(destino: Path, reservados: set[Path]) -> bool:
-    """El camino EXACTO (sin resolve) y con mayúsculas: en Windows, si
-    destino y origen difieren solo en mayúsculas, resolve() los convierte en
-    el mismo camino y la comprobación volvería a creer que hay colisión.
-    Aquí «FOTO1.JPG» y «foto1.jpg» han de ser caminos DISTINTOS."""
-    try:
-        aqui = str(destino.absolute())
-        return any(str(r.absolute()) == aqui for r in reservados)
-    except OSError:
+def esta_ocupado(destino: Path, reservados: set[Path]) -> bool:
+    """Ocupado = un nombre RESERVADO en esta pasada (camino exacto y con
+    mayúsculas: «FOTO1.JPG» y «foto1.jpg» han de ser caminos DISTINTOS, por
+    eso ni resolve() ni casefold) o un fichero que YA EXISTE en el disco.
+
+    Que exista se mira con os.path.exists (sin seguir enlaces raros), y si
+    coincide SOLO en mayúsculas es un falso positivo en Windows/macOS: allí
+    renombrar a ese nombre es un cambio de mayúsculas, no sobrescribir nada,
+    así que no cuenta como ocupado. En Linux, «FOTO1.JPG» y «foto1.jpg» son
+    ficheros distintos y cada uno cuenta.
+    """
+    if any(str(r.absolute()) == str(destino.absolute()) for r in reservados):
+        return True
+    if not os.path.exists(destino):
         return False
+    if os.path.normcase(os.path.realpath(destino)) == os.path.normcase(
+            os.path.realpath(os.path.dirname(str(destino)) or ".")):
+        return False  # colisión falsa: el SO solo diferencia en mayúsculas
+    return True
 
 
 class Accion(ABC):
