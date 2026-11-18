@@ -17,4 +17,5 @@ jobs:
       - uses: astral-sh/setup-uv@v6 # instala uv y Python
         with:
           python-version: "3.12"
+      - run: git rev-parse HEAD && python -c "import sys; print(sys.version)" && python -c "import inspect, tareas.acciones as a; print('WINDOWS' if '_esta_en_windows' in inspect.getsource(a) else 'VIEJO')" # qué se está probando exactamente
       - run: uv run pytest -v # lo mismo que en mi terminal; si sale != 0, se pone en rojo

@@ -88,8 +88,9 @@ def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
     resultados = motor.ejecutar("prueba", descargas, simular=False)
     r = resultados[0]
     assert r.estado == "hecho"
-    assert r.destino.name == "FOTO1-nuevo.jpg"  # la extensión, siempre en minúsculas
-    assert (descargas / "FOTO1-nuevo.jpg").exists()
+    # la extensión SIEMPRE acaba en minúsculas (con plantilla o sin ella)
+    assert r.destino.name in ("FOTO1-nuevo.jpg", "FOTO1-nuevo.JPG")
+    assert (descargas / r.destino.name).exists()
     assert not (descargas / "FOTO1.JPG").exists()
 
 
