@@ -28,4 +28,5 @@ Todos los cambios que notará quien USA la herramienta. Formato: [Keep a Changel
 - `renombrar-ia` ya no duplica la extensión si el modelo la añade (`redes-ip.pdf` → `redes-ip.pdf`, no `redes-ip-pdf.pdf`).
 - `tareas listar` con nombres tipo `[borrador].pdf` se escapaba mal con Rich.
 - Al rechazar la confirmación con `n`, la orden salía con un error feo de Click; ahora sale con 1 y «Cancelado: no se ha tocado nada.».
-- En sistemas que no distinguen mayúsculas (Windows), una carpeta indicada como `PDF` cuando existía `pdf` ya no provoca una sobrescritura.
+- `renombrar` en Windows y macOS fallaba al cambiar solo mayúsculas (`FOTO1.JPG` → `foto1.jpg`): el motor se creía que había colisión y mandaba el fichero a ` (1)`… y encima el rename con el nombre exacto del que ya está peta en Windows, así que se perdía el resultado. Ahora la norma «nunca sobrescribir» la garantizan los códigos de error del sistema (se avisan con un mensaje humano, no se aplasta nada), y si el disco no distingue mayúsculas (se comprueba con un sondeo real al empezar cada pasada) el cambio de mayúsculas se trata como renombrar, no como colisión.
+- `renombrar-ia` en Windows: mismo arreglo, y ya no puede sobrescribir un fichero que no existía al planificar la pasada.

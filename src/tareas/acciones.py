@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import unicodedata
@@ -15,6 +16,49 @@ from .errores import AccionNoValida, IANoDisponible, TareasError
 from .ia import ProveedorIA, Respuesta
 
 
+def _esta_en_windows() -> bool:
+    """Lo mira uv (PYTHON_WINDOWS=1, igual que Rich); si alguien ejecuta
+    Python sin pasar por uv, os.name es el plan B."""
+    return os.environ.get("PYTHON_WINDOWS") == "1" or os.name == "nt"
+
+
+def _sondeo_de_mayusculas(carpeta: Path, sufijo: str) -> bool | None:
+    """True si el disco ve «sondeo» y «SONDEO» como el MISMO nombre. None si
+    no se puede probar (sin permisos, disco raro…)."""
+    sondeo = carpeta / f".tareas-mayusculas.{sufijo}.sondeo"
+    gemelo = carpeta / f".TAREAS-MAYUSCULAS.{sufijo.upper()}.SONDEO"
+    try:
+        sondeo.write_text("", encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        return gemelo.exists()
+    finally:
+        try:
+            sondeo.unlink()
+        except OSError:
+            pass
+
+
+def el_so_no_distingue_mayusculas(carpeta: Path) -> bool:
+    """Lo averiguamos con una prueba real, no con el nombre del sistema:
+    macOS puede formatearse distinguiendo mayúsculas, y Windows sobre red a
+    lo mejor no distingue.
+
+    En Windows el sondeo FALLO en las pruebas: ahí Path.exists() está
+    emparejado y no distingue mayúsculas («FOTO1.JPG» está en la lista con
+    cualquier extensión que le pidas), pero al crear y renombrar SÍ distingue
+    y encima un rename al nombre que solo difiere en mayúsculas PETA. Por eso
+    allí damos siempre por hecho que no distingue: se marca «saltado», que es
+    la única opción segura (no se toca nada, no se aplasta nada)."""
+    if _esta_en_windows():
+        return True
+    resultado = _sondeo_de_mayusculas(carpeta, "a")
+    if resultado is None:
+        return os.path.normcase("A") == "a"  # no podemos probarlo: lo típico
+    return resultado
+
+
 @dataclass
 class Resultado:
     origen: Path
@@ -23,42 +67,47 @@ class Resultado:
     detalle: str = ""
 
 
-def destino_libre(destino: Path, reservados: set[Path] | None = None) -> Path:
-    """Nunca sobrescribe: si existe, prueba 'nombre (1).ext', 'nombre (2).ext'...
+def destino_libre(
+    destino: Path, reservados: set[Path] | None = None, sin_caso: bool = False
+) -> Path:
+    """Nunca sobrescribe: si el destino está ocupado, prueba 'nombre (1).ext',
+    'nombre (2).ext'…
 
     «reservados» evita colisiones dentro de una misma simulación, donde el
-    primer destino aún no existe en el disco. Compara nombres normalizados:
-    en Windows (y al mirar mi carpeta desde Linux) «PDF» y «pdf» son la misma
-    carpeta, y Path() no lo sabe.
+    primer destino aún no existe en el disco.
+
+    Compara EXACTO, sin mirar mayúsculas. Antes se comparaba con casefold
+    «por si acaso, Windows», y ahí estaba el bug: un rename de mayúsculas
+    («FOTO1.JPG» → «foto1.jpg») se creía colisión y se mandaba a « (1)». La
+    norma «nunca sobrescribir» la garantizan los códigos de error del sistema
+    operativo; lo único que hace «sin_caso» (el SO no distingue mayúsculas,
+    comprobado con un sondeo real) es contar como ocupado lo que solo
+    diferencia en mayúsculas, para no intentar renombrar sobre sí mismo.
     """
     reservados = reservados or set()
-    clave = destino.parent.resolve().joinpath(destino.name).as_posix().casefold()
-    claves_reservadas = {
-        r.parent.resolve().joinpath(r.name).as_posix().casefold() for r in reservados
-    }
-    if clave not in claves_reservadas and not existe_ignorando_mayusculas(destino):
+    if not esta_ocupado(destino, reservados, sin_caso):
         return destino
     n = 1
     while True:
         libre = destino.with_name(f"{destino.stem} ({n}){destino.suffix}")
-        clave = libre.parent.resolve().joinpath(libre.name).as_posix().casefold()
-        if clave not in claves_reservadas and not existe_ignorando_mayusculas(libre):
+        if not esta_ocupado(libre, reservados, sin_caso):
             return libre
         n += 1
 
 
-def existe_ignorando_mayusculas(ruta: Path) -> bool:
-    """True si el fichero existe, o existe con otro juego de mayúsculas (Windows)."""
-    if ruta.exists():
-        return True
-    padre = ruta.parent
-    if not padre.is_dir():
-        return False
-    try:
-        objetivos = {p.name.casefold() for p in padre.iterdir()}
-    except OSError:
-        return False
-    return ruta.name.casefold() in objetivos
+def esta_ocupado(destino: Path, reservados: set[Path], sin_caso: bool) -> bool:
+    """Ocupado = un nombre RESERVADO en esta pasada (camino exacto y con
+    mayúsculas, para que «FOTO1.JPG» y «foto1.jpg» sean caminos DISTINTOS) o
+    un fichero que YA EXISTE en el disco. Si el SO no distingue mayúsculas,
+    también cuenta lo que existe con otro juego de mayúsculas: allí sería el
+    MISMO fichero, y renombrar encima no sería cambiar nada, no sobrescribir.
+    """
+    aqui = str(destino.absolute())
+    for r in reservados:
+        si = str(r.absolute())
+        if si == aqui or (sin_caso and si.casefold() == aqui.casefold()):
+            return True
+    return destino.exists()
 
 
 class Accion(ABC):
@@ -146,10 +195,15 @@ class Renombrar(Accion):
     tipo = "renombrar"
 
     def aplicar(self, fichero, n, simular, reservados):
-        nuevo = self._nombre_nuevo(fichero, n)
+        # La extensión viene SIEMPRE en minúsculas, con o sin plantilla: si no,
+        # en un disco que no distingue mayúsculas «FOTO-001.JPG» y el
+        # «foto-001.jpg» del siguiente fichero serían EL MISMO nombre y la
+        # norma «nunca sobrescribir» mandaría el segundo a « (1)».
+        nuevo = self._nombre_nuevo(fichero, n).replace(fichero.suffix, fichero.suffix.lower())
         if nuevo == fichero.name:
             return Resultado(fichero, None, "saltado")
-        destino = destino_libre(fichero.with_name(nuevo), reservados)
+        sin_caso = el_so_no_distingue_mayusculas(fichero.parent)
+        destino = destino_libre(fichero.with_name(nuevo), reservados | {fichero}, sin_caso)
         if not simular:
             try:
                 fichero.rename(destino)
@@ -259,15 +313,24 @@ class RenombrarIA(AccionIA):
     def aplicar(self, fichero, n, simular, reservados):
         if simular:
             return Resultado(fichero, None, "simulado", self.presupuesto(fichero))
+        sin_caso = el_so_no_distingue_mayusculas(fichero.parent)
         r = self.preguntar(SISTEMA_NOMBRE, fichero)
         nombre = a_nombre_seguro(r.texto)
-        if not nombre or nombre + fichero.suffix.lower() == fichero.name:
+        if not nombre:
+            return Resultado(fichero, None, "saltado", "sin nombre válido")
+        nuevo = nombre + fichero.suffix.lower()
+        if nuevo == fichero.name or (
+            sin_caso and nuevo.casefold() == fichero.name.casefold()
+        ):
             return Resultado(fichero, None, "saltado", "sin nombre válido o ya se llamaba así")
-        destino = destino_libre(fichero.with_name(nombre + fichero.suffix.lower()), reservados)
-        try:
-            fichero.rename(destino)
-        except OSError as e:
-            raise TareasError(f"No puedo renombrar «{fichero.name}»: {e}") from e
+        destino = destino_libre(
+            fichero.with_name(nuevo), reservados | {fichero}, sin_caso
+        )
+        if not simular:
+            try:
+                fichero.rename(destino)
+            except OSError as e:
+                raise TareasError(f"No puedo renombrar «{fichero.name}»: {e}") from e
         return Resultado(fichero, destino, "hecho", r.resumen())
 
 

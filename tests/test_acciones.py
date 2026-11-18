@@ -65,9 +65,62 @@ def test_renombrar_con_plantilla(descargas):
         filtro={"extensiones": [".jpg", ".png"]},
         plantilla="foto-{n:03}{ext}",
     )
-    motor.ejecutar("prueba", descargas, simular=False)
+    resultados = motor.ejecutar("prueba", descargas, simular=False)
     assert (descargas / "foto-001.jpg").exists()
     assert (descargas / "foto-002.png").exists()
+    # «FOTO1.JPG» → foto-001.jpg y «cumpleaños 2.png» → foto-002.png: son
+    # nombres BASE distintos, así que en cualquier SO caben los dos y no
+    # puede salir el sufijo « (1)».
+    assert not (descargas / "foto-001 (1).jpg").exists()
+    assert not (descargas / "foto-002 (1).png").exists()
+
+
+def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
+    # «FOTO1.JPG» → «FOTO1-nuevo.JPG»: el nombre base cambia, así que en
+    # cualquier SO (distinga o no mayúsculas) se renombra. Lo que NO puede
+    # pasar es que acabe en « (1)», que era el bug del casefold en
+    # destino_libre.
+    motor = motor_con(
+        tipo="renombrar",
+        filtro={"patron_nombre": "^FOTO1$"},
+        plantilla="{nombre}-nuevo{ext}",
+    )
+    resultados = motor.ejecutar("prueba", descargas, simular=False)
+    r = resultados[0]
+    assert r.estado == "hecho"
+    # la extensión SIEMPRE acaba en minúsculas (con plantilla o sin ella)
+    assert r.destino.name in ("FOTO1-nuevo.jpg", "FOTO1-nuevo.JPG")
+    assert (descargas / r.destino.name).exists()
+    assert not (descargas / "FOTO1.JPG").exists()
+
+
+def test_cambio_de_mayusculas_es_un_rename_normal(descargas):
+    # «FOTO1.JPG» → «foto1.JPG» (misma extensión: un rename SOLO de
+    # mayúsculas). Qué debe pasar depende del disco, y lo pregunto con la
+    # MISMA función que usa el motor (un sondeo real en esta carpeta):
+    #   · disco que distingue mayúsculas (Linux, APFS sensible): se renombra.
+    #   · disco sin distinguir (NTFS, APFS normal): renombrar sobre sí mismo
+    #     no cambia nada y en Windows PETA, así que se marca «saltado» y el
+    #     fichero no se toca.
+    # Lo que NO puede pasar en ningún caso es acabar en « (1)», que era el
+    # bug del casefold en destino_libre.
+    from tareas.acciones import el_so_no_distingue_mayusculas
+
+    caso = el_so_no_distingue_mayusculas(descargas)
+    motor = motor_con(
+        tipo="renombrar",
+        filtro={"patron_nombre": "^FOTO1$"},
+        plantilla="foto1.jpg",
+    )
+    resultados = motor.ejecutar("prueba", descargas, simular=False)
+    r = resultados[0]
+    assert r.estado == ("saltado" if caso else "hecho")
+    assert " (1)" not in (r.destino.name if r.destino else "")
+    if caso:
+        assert (descargas / "FOTO1.JPG").exists()
+    else:
+        assert (descargas / "foto1.jpg").exists()
+        assert not (descargas / "FOTO1.JPG").exists()
 
 
 def test_la_accion_inexistente_da_error_claro(descargas):

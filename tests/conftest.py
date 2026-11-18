@@ -54,7 +54,23 @@ def aislado(tmp_path, monkeypatch):
 
 @pytest.fixture
 def descargas(tmp_path) -> Path:
-    """Una carpeta con ficheros feos: tildes, espacios, mayúsculas y uno viejo."""
+    """Una carpeta con ficheros feos: tildes, espacios, mayúsculas y uno viejo.
+
+    El nombre de la carpeta NO puede llevar ñ ni acentos: en Windows el TEMP
+    se guarda con el alias 8.3 del sistema (FO4BBA~1.01\\), y si el directorio
+    tiene uno, Windows compara los nombres por su forma corta y dos nombres
+    que solo se diferencian en mayúsculas/acentos pueden parecer EL MISMO: la
+    norma «nunca sobrescribir» acababa mandando el fichero a « (1)». El
+    escenario de prueba no puede depender de ese capricho de Windows.
+
+    En macOS el TEMP también llevaba ñ y allí NO pasaba: macOS usa HFS+/APFS
+    insensible pero PRESERVA el nombre que escribiste; Windows no lo preserva
+    y en la comparación usa el alias corto. El assert es para el escenario, no
+    para el SO: tmp_path lleva la ruta real del runner.
+    """
+    assert all(c.isascii() for c in str(tmp_path)), (
+        "el escenario de la prueba debe caber en el alias 8.3 de Windows"
+    )
     carpeta = tmp_path / "Descargas"
     carpeta.mkdir()
     for nombre in [
