@@ -94,31 +94,32 @@ def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
 
 
 def test_cambio_de_mayusculas_es_un_rename_normal(descargas):
-    # «FOTO1.JPG» → «foto1.JPG»: en Windows/macOS(%) es EL MISMO fichero y
-    # se marca «saltado»; en Linux se renombra de verdad. En ningún caso a
-    # « (1)».
+    # «FOTO1.JPG» → «foto1.JPG» (misma extensión: un rename SOLO de
+    # mayúsculas). Qué debe pasar depende del disco, y lo pregunto con la
+    # MISMA función que usa el motor (un sondeo real en esta carpeta):
+    #   · disco que distingue mayúsculas (Linux, APFS sensible): se renombra.
+    #   · disco sin distinguir (NTFS, APFS normal): renombrar sobre sí mismo
+    #     no cambia nada y en Windows PETA, así que se marca «saltado» y el
+    #     fichero no se toca.
+    # Lo que NO puede pasar en ningún caso es acabar en « (1)», que era el
+    # bug del casefold en destino_libre.
     from tareas.acciones import el_so_no_distingue_mayusculas
 
     caso = el_so_no_distingue_mayusculas(descargas)
     motor = motor_con(
         tipo="renombrar",
         filtro={"patron_nombre": "^FOTO1$"},
-        plantilla="foto1.jpg",  # mismo nombre y misma extensión: un rename de mayúsculas
+        plantilla="foto1.jpg",
     )
     resultados = motor.ejecutar("prueba", descargas, simular=False)
     r = resultados[0]
+    assert r.estado == ("saltado" if caso else "hecho")
+    assert " (1)" not in (r.destino.name if r.destino else "")
     if caso:
-        # El SO ve «foto1.jpg» ocupado por «FOTO1.JPG»: se marca «saltado»
-        # y el fichero no se toca. Es la ÚNICA forma segura, porque un
-        # rename con el nombre que solo difiere en mayúsculas PETA en
-        # Windows (lo probamos en Actions).
-        assert r.estado == "saltado"
         assert (descargas / "FOTO1.JPG").exists()
     else:
-        assert r.estado == "hecho"
         assert (descargas / "foto1.jpg").exists()
         assert not (descargas / "FOTO1.JPG").exists()
-    assert " (1)" not in (r.destino.name if r.destino else "")
 
 
 def test_la_accion_inexistente_da_error_claro(descargas):
