@@ -16,17 +16,21 @@ from .errores import AccionNoValida, IANoDisponible, TareasError
 from .ia import ProveedorIA, Respuesta
 
 
-def el_so_no_distingue_mayusculas(carpeta: Path) -> bool:
-    """Lo averiguamos con una prueba real, no con el nombre del sistema:
-    macOS puede formatearse distinguiendo mayúsculas, y Windows sobre red a
-    lo mejor no distingue. Creamos un nombre de sondeo y miramos si el SO ve
-    ocupado su gemelo en otras mayúsculas."""
-    sondeo = carpeta / ".tareas-mayusculas.sondeo"
-    gemelo = sondeo.with_name(sondeo.name.upper())
+def _esta_en_windows() -> bool:
+    """Lo mira uv (PYTHON_WINDOWS=1, igual que Rich); si alguien ejecuta
+    Python sin pasar por uv, os.name es el plan B."""
+    return os.environ.get("PYTHON_WINDOWS") == "1" or os.name == "nt"
+
+
+def _sondeo_de_mayusculas(carpeta: Path, sufijo: str) -> bool | None:
+    """True si el disco ve «sondeo» y «SONDEO» como el MISMO nombre. None si
+    no se puede probar (sin permisos, disco raro…)."""
+    sondeo = carpeta / f".tareas-mayusculas.{sufijo}.sondeo"
+    gemelo = carpeta / f".TAREAS-MAYUSCULAS.{sufijo.upper()}.SONDEO"
     try:
         sondeo.write_text("", encoding="utf-8")
     except OSError:
-        return os.path.normcase("A") == "a"  # no podemos probarlo: lo típico
+        return None
     try:
         return gemelo.exists()
     finally:
@@ -34,6 +38,25 @@ def el_so_no_distingue_mayusculas(carpeta: Path) -> bool:
             sondeo.unlink()
         except OSError:
             pass
+
+
+def el_so_no_distingue_mayusculas(carpeta: Path) -> bool:
+    """Lo averiguamos con una prueba real, no con el nombre del sistema:
+    macOS puede formatearse distinguiendo mayúsculas, y Windows sobre red a
+    lo mejor no distingue.
+
+    En Windows el sondeo FALLO en las pruebas: ahí Path.exists() está
+    emparejado y no distingue mayúsculas («FOTO1.JPG» está en la lista con
+    cualquier extensión que le pidas), pero al crear y renombrar SÍ distingue
+    y encima un rename al nombre que solo difiere en mayúsculas PETA. Por eso
+    allí damos siempre por hecho que no distingue: se marca «saltado», que es
+    la única opción segura (no se toca nada, no se aplasta nada)."""
+    if _esta_en_windows():
+        return True
+    resultado = _sondeo_de_mayusculas(carpeta, "a")
+    if resultado is None:
+        return os.path.normcase("A") == "a"  # no podemos probarlo: lo típico
+    return resultado
 
 
 @dataclass
