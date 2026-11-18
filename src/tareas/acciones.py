@@ -16,6 +16,26 @@ from .errores import AccionNoValida, IANoDisponible, TareasError
 from .ia import ProveedorIA, Respuesta
 
 
+def el_so_no_distingue_mayusculas(carpeta: Path) -> bool:
+    """Lo averiguamos con una prueba real, no con el nombre del sistema:
+    macOS puede formatearse distinguiendo mayúsculas, y Windows sobre red a
+    lo mejor no distingue. Creamos un nombre de sondeo y miramos si el SO ve
+    ocupado su gemelo en otras mayúsculas."""
+    sondeo = carpeta / ".tareas-mayusculas.sondeo"
+    gemelo = sondeo.with_name(sondeo.name.upper())
+    try:
+        sondeo.write_text("", encoding="utf-8")
+    except OSError:
+        return os.path.normcase("A") == "a"  # no podemos probarlo: lo típico
+    try:
+        return gemelo.exists()
+    finally:
+        try:
+            sondeo.unlink()
+        except OSError:
+            pass
+
+
 @dataclass
 class Resultado:
     origen: Path
@@ -24,53 +44,47 @@ class Resultado:
     detalle: str = ""
 
 
-def destino_libre(destino: Path, reservados: set[Path] | None = None) -> Path:
-    """Nunca sobrescribe: si existe, prueba 'nombre (1).ext', 'nombre (2).ext'...
+def destino_libre(
+    destino: Path, reservados: set[Path] | None = None, sin_caso: bool = False
+) -> Path:
+    """Nunca sobrescribe: si el destino está ocupado, prueba 'nombre (1).ext',
+    'nombre (2).ext'…
 
     «reservados» evita colisiones dentro de una misma simulación, donde el
     primer destino aún no existe en el disco.
 
     Compara EXACTO, sin mirar mayúsculas. Antes se comparaba con casefold
-    «por si acaso, Windows», y ahí estaban los dos bugs: un rename de
-    mayúsculas («FOTO1.JPG» → «foto1.jpg») se creía colisión y se mandaba a
-    « (1)»… encima el rename en Windows con el nombre exacto del que ya está
-    FALLA, así que se aplastaba el destino. La norma «nunca sobrescribir» la
-    cumplen los códigos de error del sistema operativo (FileExistsError /
-    EEXIST → lo contamos como TareasError); el casefold aquí sobraba.
-    Lo de «PDF» y «pdf» como carpetas sigue cubierto: Path.mkdir no falla si
-    la carpeta ya existe con otro juego de mayúsculas, y si el destino
-    existiera de verdad, shutil o rename petarían y lo traducimos.
+    «por si acaso, Windows», y ahí estaba el bug: un rename de mayúsculas
+    («FOTO1.JPG» → «foto1.jpg») se creía colisión y se mandaba a « (1)». La
+    norma «nunca sobrescribir» la garantizan los códigos de error del sistema
+    operativo; lo único que hace «sin_caso» (el SO no distingue mayúsculas,
+    comprobado con un sondeo real) es contar como ocupado lo que solo
+    diferencia en mayúsculas, para no intentar renombrar sobre sí mismo.
     """
     reservados = reservados or set()
-    if not esta_ocupado(destino, reservados):
+    if not esta_ocupado(destino, reservados, sin_caso):
         return destino
     n = 1
     while True:
         libre = destino.with_name(f"{destino.stem} ({n}){destino.suffix}")
-        if not esta_ocupado(libre, reservados):
+        if not esta_ocupado(libre, reservados, sin_caso):
             return libre
         n += 1
 
 
-def esta_ocupado(destino: Path, reservados: set[Path]) -> bool:
+def esta_ocupado(destino: Path, reservados: set[Path], sin_caso: bool) -> bool:
     """Ocupado = un nombre RESERVADO en esta pasada (camino exacto y con
-    mayúsculas: «FOTO1.JPG» y «foto1.jpg» han de ser caminos DISTINTOS, por
-    eso ni resolve() ni casefold) o un fichero que YA EXISTE en el disco.
-
-    Que exista se mira con os.path.exists (sin seguir enlaces raros), y si
-    coincide SOLO en mayúsculas es un falso positivo en Windows/macOS: allí
-    renombrar a ese nombre es un cambio de mayúsculas, no sobrescribir nada,
-    así que no cuenta como ocupado. En Linux, «FOTO1.JPG» y «foto1.jpg» son
-    ficheros distintos y cada uno cuenta.
+    mayúsculas, para que «FOTO1.JPG» y «foto1.jpg» sean caminos DISTINTOS) o
+    un fichero que YA EXISTE en el disco. Si el SO no distingue mayúsculas,
+    también cuenta lo que existe con otro juego de mayúsculas: allí sería el
+    MISMO fichero, y renombrar encima no sería cambiar nada, no sobrescribir.
     """
-    if any(str(r.absolute()) == str(destino.absolute()) for r in reservados):
-        return True
-    if not os.path.exists(destino):
-        return False
-    if os.path.normcase(os.path.realpath(destino)) == os.path.normcase(
-            os.path.realpath(os.path.dirname(str(destino)) or ".")):
-        return False  # colisión falsa: el SO solo diferencia en mayúsculas
-    return True
+    aqui = str(destino.absolute())
+    for r in reservados:
+        si = str(r.absolute())
+        if si == aqui or (sin_caso and si.casefold() == aqui.casefold()):
+            return True
+    return destino.exists()
 
 
 class Accion(ABC):
@@ -161,7 +175,8 @@ class Renombrar(Accion):
         nuevo = self._nombre_nuevo(fichero, n)
         if nuevo == fichero.name:
             return Resultado(fichero, None, "saltado")
-        destino = destino_libre(fichero.with_name(nuevo), reservados | {fichero})
+        sin_caso = el_so_no_distingue_mayusculas(fichero.parent)
+        destino = destino_libre(fichero.with_name(nuevo), reservados | {fichero}, sin_caso)
         if not simular:
             try:
                 fichero.rename(destino)
@@ -271,12 +286,18 @@ class RenombrarIA(AccionIA):
     def aplicar(self, fichero, n, simular, reservados):
         if simular:
             return Resultado(fichero, None, "simulado", self.presupuesto(fichero))
+        sin_caso = el_so_no_distingue_mayusculas(fichero.parent)
         r = self.preguntar(SISTEMA_NOMBRE, fichero)
         nombre = a_nombre_seguro(r.texto)
-        if not nombre or nombre + fichero.suffix.lower() == fichero.name:
+        if not nombre:
+            return Resultado(fichero, None, "saltado", "sin nombre válido")
+        nuevo = nombre + fichero.suffix.lower()
+        if nuevo == fichero.name or (
+            sin_caso and nuevo.casefold() == fichero.name.casefold()
+        ):
             return Resultado(fichero, None, "saltado", "sin nombre válido o ya se llamaba así")
         destino = destino_libre(
-            fichero.with_name(nombre + fichero.suffix.lower()), reservados | {fichero}
+            fichero.with_name(nuevo), reservados | {fichero}, sin_caso
         )
         if not simular:
             try:

@@ -1,6 +1,4 @@
 # tests/test_acciones.py: las acciones con ficheros reales, pero en tmp_path
-import os
-
 import pytest
 
 from tareas.errores import TareasError
@@ -70,18 +68,18 @@ def test_renombrar_con_plantilla(descargas):
     resultados = motor.ejecutar("prueba", descargas, simular=False)
     assert (descargas / "foto-001.jpg").exists()
     assert (descargas / "foto-002.png").exists()
-    # en Windows el patrón no distingue mayúsculas: «FOTO1.JPG» y
-    # «cumpleaños 2.png» tienen nombres BASE distintos y caben los dos
+    # «FOTO1.JPG» → foto-001.jpg y «cumpleaños 2.png» → foto-002.png: son
+    # nombres BASE distintos, así que en cualquier SO caben los dos y no
+    # puede salir el sufijo « (1)».
     assert not (descargas / "foto-001 (1).jpg").exists()
     assert not (descargas / "foto-002 (1).png").exists()
 
 
 def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
-    # «FOTO1.JPG» → «foto1.JPG»: en Linux/macOS(%) son nombres distintos y se
-    # renombraría; en Windows y en macOS es EL MISMO fichero y se marca
-    # «saltado». Lo que NO puede pasar en ninguna plataforma es que se mande
-    # a « (1)», que era el bug del casefold en destino_libre.
-    caso = os.path.normcase("FOTO1.JPG") == "foto1.jpg"  # SO sin distinguir
+    # «FOTO1.JPG» → «FOTO1-nuevo.JPG»: el nombre base cambia, así que en
+    # cualquier SO (distinga o no mayúsculas) se renombra. Lo que NO puede
+    # pasar es que acabe en « (1)», que era el bug del casefold en
+    # destino_libre.
     motor = motor_con(
         tipo="renombrar",
         filtro={"patron_nombre": "^FOTO1$"},
@@ -89,11 +87,31 @@ def test_mismo_nombre_solo_mayusculas_no_achasta(descargas):
     )
     resultados = motor.ejecutar("prueba", descargas, simular=False)
     r = resultados[0]
+    assert r.estado == "hecho"
+    assert r.destino.name == "FOTO1-nuevo.jpg"  # la plantilla pone {ext} en minúsculas
+    assert (descargas / "FOTO1-nuevo.jpg").exists()
+    assert not (descargas / "FOTO1.JPG").exists()
+
+
+def test_cambio_de_mayusculas_es_un_rename_normal(descargas):
+    # «FOTO1.JPG» → «foto1.JPG»: en Windows/macOS(%) es EL MISMO fichero y
+    # se marca «saltado»; en Linux se renombra de verdad. En ningún caso a
+    # « (1)».
+    from tareas.acciones import el_so_no_distingue_mayusculas
+
+    caso = el_so_no_distingue_mayusculas(descargas)
+    motor = motor_con(
+        tipo="renombrar",
+        filtro={"patron_nombre": "^FOTO1$"},
+        plantilla="foto1.JPG",
+    )
+    resultados = motor.ejecutar("prueba", descargas, simular=False)
+    r = resultados[0]
     assert r.estado == ("saltado" if caso else "hecho")
     assert " (1)" not in (r.destino.name if r.destino else "")
-    assert r.destino.name.casefold() == "foto1-nuevo.jpg"
-    assert (descargas / r.destino.name).exists()
-    assert not (descargas / "FOTO1.JPG").exists()
+    if not caso:
+        assert (descargas / "foto1.JPG").exists()
+        assert not (descargas / "FOTO1.JPG").exists()
 
 
 def test_la_accion_inexistente_da_error_claro(descargas):
