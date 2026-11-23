@@ -86,16 +86,13 @@ def test_renombrar_con_plantilla(descargas):
         plantilla="foto-{n:03}{ext}",
     )
     resultados = motor.ejecutar("prueba", descargas, simular=False)
-    # «FOTO1.JPG» → foto-001.jpg. En Windows, renombrar UNICAMENTE de
-    # mayúsculas no se refleja: «foto-001.jpg» es el MISMO nombre que
-    # «FOTO1.JPG» y el rename se queda con el nombre que ya estaba escrito
-    # en el directorio (la prueba de mayúsculas de abajo sondea esa
-    # realidad). La norma que no puede romperse en NINGÚN SO es «nunca
-    # sobrescribir»: el fichero tiene que seguir ahí con UNO de los dos
-    # nombres (el viejo si el rename no se refleja) y
-    # « (1)» no tiene por qué aparecer, porque los nombres base no colisionan.
-    expecta = (descargas / "foto-001.jpg").exists() or (descargas / "FOTO1.JPG").exists()
-    assert expecta
+    # La plantilla sobre las DOS imágenes (jpg y png). La png («cumpleaños
+    # 2.png» → foto-002.png) cambia de nombre base de verdad: se renombra en
+    # cualquier SO. La jpg («FOTO1.JPG» → foto-001.jpg) es un rename SOLO de
+    # mayúsculas: en Windows y en el exfat del aula no se refleja (el listado
+    # conserva el nombre escrito, por eso no lo vemos ni con exists() de
+    # ninguna de las dos formas). Lo que NO puede pasar aquí en NINGÚN SO es
+    # el sufijo « (1)», que aplastaría el segundo fichero.
     assert (descargas / "foto-002.png").exists()
     assert not (descargas / "foto-001 (1).jpg").exists()
     assert not (descargas / "foto-002 (1).png").exists()
