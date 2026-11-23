@@ -105,13 +105,17 @@ def descargas(tmp_path) -> Path:
     tiene uno, Windows compara los nombres por su forma corta y dos nombres
     que solo se diferencian en mayúsculas/acentos pueden parecer EL MISMO: la
     norma «nunca sobrescribir» acababa mandando el fichero a « (1)». El
-    escenario de prueba no puede depender de ese capricho de Windows. En
-    Windows los runners de Actions usan el TEMP por defecto (la ruta real,
-    con el usuario «runneradmin»); lo que se prueba aquí, en cambio, va a una
-    ruta limpia (BASE_TMP, ver más abajo).
+    escenario de prueba no puede depender de ese capricho de Windows. El
+    escenario vive en BASE_TMP (ruta ASCII y limpia del repo), no en el TEMP:
+    en Windows el TEMP es C:\\Users\\RUNNER~1\\... y ahí el alias 8.3 del
+    usuario ya nos lió dos comparaciones en Actions.
     """
     carpeta = tmp_path / "Descargas"
     carpeta.mkdir()
+    # «FOTO1.JPG» con nombre ASCII y sin ñ: en Windows la comparación de
+    # nombres pasa por el alias 8.3, y un nombre con ñ (como «cumpleaños»)
+    # se empareja con su recortado (CUMPLE~1). El escenario NO puede depender
+    # de ese capricho.
     for nombre in [
         "factura.pdf",
         "apuntes de redes.docx",

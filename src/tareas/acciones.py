@@ -44,7 +44,11 @@ def _sondeo_de_mayusculas(carpeta: Path, sufijo: str) -> bool | None:
     try:
         return gemelo.exists()
     finally:
-        for nombre in (sondeo, gemelo):  # en exfat quedan los dos: borro los dos
+        # EN EXFAT (el USB del aula) el sondeo deja DOS entradas (la creada y
+        # el gemelo, cada una con su inodo) y el unlink solo quita la que
+        # escribiste; quedan restos en el disco si no borras también el
+        # gemelo. En ext4/NTFS el gemelo no existe y el unlink no molesta.
+        for nombre in (sondeo, gemelo):
             try:
                 nombre.unlink()
             except OSError:
