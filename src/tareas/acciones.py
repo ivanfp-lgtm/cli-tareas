@@ -24,7 +24,17 @@ def _esta_en_windows() -> bool:
 
 def _sondeo_de_mayusculas(carpeta: Path, sufijo: str) -> bool | None:
     """True si el disco ve «sondeo» y «SONDEO» como el MISMO nombre. None si
-    no se puede probar (sin permisos, disco raro…)."""
+    no se puede probar (sin permisos, disco raro…).
+
+    Sondea creando un nombre en minúsculas y mirando si aparece el gemelo
+    en mayúsculas. OJO en exfat (el USB del aula): allí la creación deja dos
+    entradas que solo se ven de una en una, cada una con su propio inodo, y
+    este sondeo dice «distingue». Por eso el cambio de mayúsculas sobre un
+    fichero REAL no se decide aquí: se comprueba al aplicar la acción, con
+    un rename de prueba sobre un temporero con la extensión del fichero
+    real (ver _rename_de_mayusculas_es_real). En ext4, NTFS, APFS y los
+    runners de Actions este sondeo sí es de fiar.
+    """
     sondeo = carpeta / f".tareas-mayusculas.{sufijo}.sondeo"
     gemelo = carpeta / f".TAREAS-MAYUSCULAS.{sufijo.upper()}.SONDEO"
     try:
@@ -34,10 +44,45 @@ def _sondeo_de_mayusculas(carpeta: Path, sufijo: str) -> bool | None:
     try:
         return gemelo.exists()
     finally:
+        for nombre in (sondeo, gemelo):  # en exfat quedan los dos: borro los dos
+            try:
+                nombre.unlink()
+            except OSError:
+                pass
+
+
+def _rename_de_mayusculas_es_real(carpeta: Path, sufijo: str) -> bool | None:
+    """True si en ESTE disco renombrar un fichero cambiándolo solo de
+    mayúsculas se nota de verdad (ext4, APFS sensible, los runners de
+    Actions). False si el listado sigue enseñando el nombre viejo (NTFS,
+    APFS insensible y exfat+ignore_case, el USB del aula; allí sería
+    renombrar sobre sí mismo). None si no se puede probar.
+
+    Se pregunta con un temporero que lleva la MISMA extensión que el
+    fichero real: en exfat el comportamiento depende de ella (el listado no
+    refleja el rename con «.jpg», y sí lo refleja con sufijos de un solo
+    punto como «.tmp»).
+    """
+    minus = carpeta / f".tareas-mayusculas.{sufijo}.sondeo"
+    mayus = carpeta / f".TAREAS-MAYUSCULAS.{sufijo.upper()}.SONDEO"
+    for nombre in (minus, mayus):
         try:
-            sondeo.unlink()
+            nombre.unlink()
         except OSError:
             pass
+    try:
+        minus.write_text("", encoding="utf-8")
+        minus.rename(mayus)
+    except OSError:
+        return None
+    try:
+        return mayus.exists() and not minus.exists()
+    finally:
+        for nombre in (minus, mayus):
+            try:
+                nombre.unlink()
+            except OSError:
+                pass
 
 
 def el_so_no_distingue_mayusculas(carpeta: Path) -> bool:
@@ -113,6 +158,7 @@ def esta_ocupado(destino: Path, reservados: set[Path], sin_caso: bool) -> bool:
 class Accion(ABC):
     tipo = ""
     destructiva = False
+    necesita_ia = False  # las de IA la ponen a True; la lee cli.py para pedir el proveedor
     _registro: dict[str, type[Accion]] = {}
 
     def __init__(self, config: dict):
@@ -203,6 +249,21 @@ class Renombrar(Accion):
         if nuevo == fichero.name:
             return Resultado(fichero, None, "saltado")
         sin_caso = el_so_no_distingue_mayusculas(fichero.parent)
+        if sin_caso and nuevo.casefold() == fichero.name.casefold():
+            # Un rename SOLO de mayúsculas. En un disco donde el rename de
+            # mayúsculas no se refleja (NTFS, APFS insensible, exfat como el
+            # USB del aula) es el MISMO sitio: no cambiaría nada, y en
+            # Windows peta. Se salta, como si el nombre fuera idéntico. En
+            # uno donde sí se refleja de verdad (ext4, APFS sensible) se
+            # uno donde sí se refleja de verdad (ext4, APFS sensible) se
+            # renombra normal. Lo decide un sondeo real SOLO al ejecutar de
+            # verdad: al simular no se toca NADA del disco (ni temporeros) y
+            # el fichero se planifica como «saltado», que es lo que daría el
+            # disco del aula, el más común de los tres casos.
+            if simular:
+                return Resultado(fichero, None, "saltado")
+            if _rename_de_mayusculas_es_real(fichero.parent, fichero.suffix) is not True:
+                return Resultado(fichero, None, "saltado")
         destino = destino_libre(fichero.with_name(nuevo), reservados | {fichero}, sin_caso)
         if not simular:
             try:

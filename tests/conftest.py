@@ -3,7 +3,9 @@
 
 import json
 import os
+import shutil
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,48 @@ from tareas.errores import IANoDisponible
 from tareas.ia import ProveedorIA, Respuesta
 
 mkdir_original = Path.mkdir
+
+# El escenario de las pruebas NO se monta en el TEMP del sistema: en Windows
+# el TEMP es C:\Users\RUNNER~1\... (alias 8.3 del «runneradmin», con ñ en el
+# nombre real) y las comparaciones de nombres por ahí son un caos: dos
+# nombres que solo se diferencian en mayúsculas/acentos pueden parecer EL
+# MISMO y la norma «nunca sobrescribir» manda el fichero a «(1)» (lo vimos
+# en Actions: solo petaba windows-latest). Lo montamos en una ruta ASCII
+# limpia y corta del repo. OJO con el USB del aula: vive en DAM/Programación
+# (con ñ), que NO es ASCII; en ese equipo hay que clonar el repo en una ruta
+# sin acentos (o copiarlo) para pasar las pruebas, y mientras tanto pytest lo
+# dice con un skip en vez de dar falsos rojos. En GitHub Actions la ruta sí es
+# ASCII (/home/runner/work/…) y se pasan enteras.
+BASE_TMP = Path(__file__).resolve().parent.parent / ".caja-de-arena"
+RUTA_NO_ASCII = not str(BASE_TMP).isascii()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Al acabar la sesión, la caja de arena no deja ni rastro en el repo."""
+    try:
+        shutil.rmtree(BASE_TMP)
+    except (FileNotFoundError, PermissionError, OSError):
+        pass  # la caja ya no estaba, o el disco no deja borrar: no es un fallo
+
+
+@pytest.fixture
+def tmp_path() -> Path:
+    """Mi propio tmp_path, sin el TEMP de Windows por medio."""
+    if RUTA_NO_ASCII:
+        pytest.skip(
+            "el repo está en una ruta con acentos: copia o clona el proyecto "
+            "en una ruta ASCII para pasar las pruebas (ver conftest.py)"
+        )
+    try:
+        viejos = list(BASE_TMP.glob("prueba-*"))
+    except OSError:
+        viejos = []  # un disco raro o sin permisos: no es motivo para petar la sesión
+    for viejo in viejos:
+        shutil.rmtree(viejo, ignore_errors=True)
+    caja = BASE_TMP / f"prueba-{uuid.uuid4().hex[:8]}"
+    caja.mkdir(parents=True)
+    yield caja
+    shutil.rmtree(caja, ignore_errors=True)
 
 
 def _mkdir_dentro_de(tmp_path):
@@ -61,16 +105,11 @@ def descargas(tmp_path) -> Path:
     tiene uno, Windows compara los nombres por su forma corta y dos nombres
     que solo se diferencian en mayúsculas/acentos pueden parecer EL MISMO: la
     norma «nunca sobrescribir» acababa mandando el fichero a « (1)». El
-    escenario de prueba no puede depender de ese capricho de Windows.
-
-    En macOS el TEMP también llevaba ñ y allí NO pasaba: macOS usa HFS+/APFS
-    insensible pero PRESERVA el nombre que escribiste; Windows no lo preserva
-    y en la comparación usa el alias corto. El assert es para el escenario, no
-    para el SO: tmp_path lleva la ruta real del runner.
+    escenario de prueba no puede depender de ese capricho de Windows. En
+    Windows los runners de Actions usan el TEMP por defecto (la ruta real,
+    con el usuario «runneradmin»); lo que se prueba aquí, en cambio, va a una
+    ruta limpia (BASE_TMP, ver más abajo).
     """
-    assert all(c.isascii() for c in str(tmp_path)), (
-        "el escenario de la prueba debe caber en el alias 8.3 de Windows"
-    )
     carpeta = tmp_path / "Descargas"
     carpeta.mkdir()
     for nombre in [
