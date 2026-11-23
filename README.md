@@ -100,6 +100,7 @@ IA siguen funcionando**.
 - `--simular` enseña la misma tabla sin tocar NADA del disco (ni crea carpetas, ni llama al modelo).
 - Nunca se sobrescribe: si el destino existe (o ya está reservado en la misma simulación) se añade el sufijo ` (1)`, ` (2)`…
 - Al renombrar, si el nombre nuevo coincide con el actual, el fichero se marca `saltado`.
+- Al renombrar cambiando SOLO mayúsculas (`FOTO1.JPG` → `foto1.jpg`): en un disco donde el rename se refleja de verdad (ext4, APFS sensible) se renombra normal; en uno donde no (NTFS, APFS insensible, un USB exfat) o cuando no se puede probar (sin permisos) se marca `saltado` y no se toca nada, porque ahí sería renombrar sobre sí mismo. Con `--simular` siempre se planifica como `saltado`.
 - Códigos de salida: `0` bien · `1` fallo al ejecutar · `2` error de uso (lo pone Typer) · `3` configuración inválida · `4` sin IA disponible.
 
 ## Primeros pasos

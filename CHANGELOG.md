@@ -6,6 +6,8 @@ Todos los cambios que notará quien USA la herramienta. Formato: [Keep a Changel
 
 ### Añadido
 
+- Las pruebas montan su escenario en una ruta ASCII limpia y corta del repo (`.caja-de-arena/`, ignorada por git), no en el TEMP del sistema: en Windows el TEMP lleva el alias 8.3 del usuario y eso falseaba las comparaciones de nombres.
+
 - Órdenes `tareas acciones`, `tareas validar` y `tareas ejecutar NOMBRE [CARPETA]`, con tabla de resultados, `--simular` y `--si`.
 - Opción global `--config RUTA` para usar otro fichero de acciones.
 - Filtro `patron_nombre` (regex sobre el nombre sin extensión): `FOTO.JPG` y `IMG_0001.JPG` ya no se escapan.
@@ -28,4 +30,6 @@ Todos los cambios que notará quien USA la herramienta. Formato: [Keep a Changel
 - `renombrar-ia` ya no duplica la extensión si el modelo la añade (`redes-ip.pdf` → `redes-ip.pdf`, no `redes-ip-pdf.pdf`).
 - `tareas listar` con nombres tipo `[borrador].pdf` se escapaba mal con Rich.
 - Al rechazar la confirmación con `n`, la orden salía con un error feo de Click; ahora sale con 1 y «Cancelado: no se ha tocado nada.».
-- En sistemas que no distinguen mayúsculas (Windows), una carpeta indicada como `PDF` cuando existía `pdf` ya no provoca una sobrescritura.
+- `renombrar` en Windows y macOS fallaba al cambiar solo mayúsculas (`FOTO1.JPG` → `foto1.jpg`): el motor se creía que había colisión y mandaba el fichero a ` (1)`… y encima el rename con el nombre exacto del que ya está peta en Windows, así que se perdía el resultado. Ahora la norma «nunca sobrescribir» la garantizan los códigos de error del sistema (se avisan con un mensaje humano, no se aplasta nada), y si el disco no distingue mayúsculas (se comprueba con un sondeo real al empezar cada pasada) el cambio de mayúsculas se trata como renombrar, no como colisión.
+- `renombrar-ia` en Windows: mismo arreglo, y ya no puede sobrescribir un fichero que no existía al planificar la pasada.
+- El cambio de mayúsculas en un USB exfat (el formato del aula): ahí el rename se hace pero el listado conserva el nombre viejo, y el motor, que sondeaba creando un nombre nuevo, lo interpretaba mal y mandaba el fichero a ` (1)`. Ahora un rename solo de mayúsculas en un disco que no distingue se marca `saltado` y no se toca nada; las pruebas sondean con la misma operación que ejecuta el motor.

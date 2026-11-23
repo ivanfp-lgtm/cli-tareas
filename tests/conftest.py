@@ -3,7 +3,9 @@
 
 import json
 import os
+import shutil
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,48 @@ from tareas.errores import IANoDisponible
 from tareas.ia import ProveedorIA, Respuesta
 
 mkdir_original = Path.mkdir
+
+# El escenario de las pruebas NO se monta en el TEMP del sistema: en Windows
+# el TEMP es C:\Users\RUNNER~1\... (alias 8.3 del «runneradmin», con ñ en el
+# nombre real) y las comparaciones de nombres por ahí son un caos: dos
+# nombres que solo se diferencian en mayúsculas/acentos pueden parecer EL
+# MISMO y la norma «nunca sobrescribir» manda el fichero a «(1)» (lo vimos
+# en Actions: solo petaba windows-latest). Lo montamos en una ruta ASCII
+# limpia y corta del repo. OJO con el USB del aula: vive en DAM/Programación
+# (con ñ), que NO es ASCII; en ese equipo hay que clonar el repo en una ruta
+# sin acentos (o copiarlo) para pasar las pruebas, y mientras tanto pytest lo
+# dice con un skip en vez de dar falsos rojos. En GitHub Actions la ruta sí es
+# ASCII (/home/runner/work/…) y se pasan enteras.
+BASE_TMP = Path(__file__).resolve().parent.parent / ".caja-de-arena"
+RUTA_NO_ASCII = not str(BASE_TMP).isascii()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Al acabar la sesión, la caja de arena no deja ni rastro en el repo."""
+    try:
+        shutil.rmtree(BASE_TMP)
+    except (FileNotFoundError, PermissionError, OSError):
+        pass  # la caja ya no estaba, o el disco no deja borrar: no es un fallo
+
+
+@pytest.fixture
+def tmp_path() -> Path:
+    """Mi propio tmp_path, sin el TEMP de Windows por medio."""
+    if RUTA_NO_ASCII:
+        pytest.skip(
+            "el repo está en una ruta con acentos: copia o clona el proyecto "
+            "en una ruta ASCII para pasar las pruebas (ver conftest.py)"
+        )
+    try:
+        viejos = list(BASE_TMP.glob("prueba-*"))
+    except OSError:
+        viejos = []  # un disco raro o sin permisos: no es motivo para petar la sesión
+    for viejo in viejos:
+        shutil.rmtree(viejo, ignore_errors=True)
+    caja = BASE_TMP / f"prueba-{uuid.uuid4().hex[:8]}"
+    caja.mkdir(parents=True)
+    yield caja
+    shutil.rmtree(caja, ignore_errors=True)
 
 
 def _mkdir_dentro_de(tmp_path):
@@ -54,9 +98,23 @@ def aislado(tmp_path, monkeypatch):
 
 @pytest.fixture
 def descargas(tmp_path) -> Path:
-    """Una carpeta con ficheros feos: tildes, espacios, mayúsculas y uno viejo."""
+    """Una carpeta con ficheros feos: tildes, espacios, mayúsculas y uno viejo.
+
+    El nombre de los ficheros NO puede depender del alias 8.3 de Windows:
+    un nombre con ñ se translitera al recortarlo (CUMPL~1) y dos nombres
+    distintos pueden quedarse con la MISMA forma corta, con lo que la
+    comparación de Windows los ve iguales y la norma «nunca sobrescribir»
+    acaba mandando el fichero a « (1)». Por eso el escenario vive en
+    BASE_TMP (ruta ASCII y limpia del repo), no en el TEMP del sistema: en
+    Windows el TEMP es C:\\Users\\RUNNER~1\\... y ahí el alias 8.3 del
+    usuario ya nos lió dos comparaciones en Actions.
+    """
     carpeta = tmp_path / "Descargas"
     carpeta.mkdir()
+    # «FOTO1.JPG» con nombre ASCII y sin ñ: en Windows la comparación de
+    # nombres pasa por el alias 8.3, y un nombre con ñ (como «cumpleaños»)
+    # se empareja con su recortado (CUMPLE~1). El escenario NO puede depender
+    # de ese capricho.
     for nombre in [
         "factura.pdf",
         "apuntes de redes.docx",

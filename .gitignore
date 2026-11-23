@@ -12,3 +12,6 @@ dist/
 # Caché de pytest
 .pytest_cache/
 .coverage
+
+# Escenario de las pruebas (se crea y se borra al ejecutar pytest)
+.caja-de-arena/
