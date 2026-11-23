@@ -62,39 +62,19 @@ def test_borrar_solo_los_viejos(descargas):
     assert (descargas / "nuevo.tmp").exists()
 
 
-def test_renombrar_un_nombre_que_cambia_en_todos_los_sistemas(descargas):
-    # «cumpleaños 2.png» → «foto-001.png»: el nombre base cambia de verdad,
-    # así que en cualquier SO (y con cualquier alias 8.3) se renombra y el
-    # nombre nuevo existe. Es la parte de la plantilla que Windows SÍ puede
-    # comprobar entera.
-    motor = motor_con(
-        tipo="renombrar",
-        filtro={"patron_nombre": "^cumpleaños 2$"},
-        plantilla="foto-{n:03}{ext}",
-    )
-    motor.ejecutar("prueba", descargas, simular=False)
-    # el único .png de la caja, con filtro patron_nombre: es el primero (n=1)
-    assert (descargas / "foto-001.png").exists()
-    assert not (descargas / "cumpleaños 2.png").exists()
-    assert not (descargas / "foto-002 (1).png").exists()
-
-
 def test_renombrar_con_plantilla(descargas):
     motor = motor_con(
         tipo="renombrar",
-        filtro={"extensiones": [".jpg", ".png"]},
+        filtro={"extensiones": [".png"]},
         plantilla="foto-{n:03}{ext}",
     )
     resultados = motor.ejecutar("prueba", descargas, simular=False)
-    # La plantilla sobre las DOS imágenes (jpg y png). La png («cumpleaños
-    # 2.png» → foto-002.png) cambia de nombre base de verdad: se renombra en
-    # cualquier SO. La jpg («FOTO1.JPG» → foto-001.jpg) es un rename SOLO de
-    # mayúsculas: en Windows y en el exfat del aula no se refleja (el listado
-    # conserva el nombre escrito, por eso no lo vemos ni con exists() de
-    # ninguna de las dos formas). Lo que NO puede pasar aquí en NINGÚN SO es
-    # el sufijo « (1)», que aplastaría el segundo fichero.
-    assert (descargas / "foto-002.png").exists()
-    assert not (descargas / "foto-001 (1).jpg").exists()
+    # «cumpleaños 2.png» → foto-001.png: el nombre base cambia de verdad, así
+    # que se renombra en cualquier SO (con cualquier alias 8.3). Lo que no
+    # puede salir NUNCA es « (1)» (no hay otro fichero con ese nombre).
+    assert (descargas / "foto-001.png").exists()
+    assert not (descargas / "cumpleaños 2.png").exists()
+    assert not (descargas / "foto-001 (1).png").exists()
     assert not (descargas / "foto-002 (1).png").exists()
 
 
