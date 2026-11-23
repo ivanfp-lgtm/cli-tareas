@@ -100,14 +100,13 @@ def aislado(tmp_path, monkeypatch):
 def descargas(tmp_path) -> Path:
     """Una carpeta con ficheros feos: tildes, espacios, mayúsculas y uno viejo.
 
-    El nombre de la carpeta NO puede llevar ñ ni acentos: en Windows el TEMP
-    se guarda con el alias 8.3 del sistema (FO4BBA~1.01\\), y si el directorio
-    tiene uno, Windows compara los nombres por su forma corta y dos nombres
-    que solo se diferencian en mayúsculas/acentos pueden parecer EL MISMO: la
-    norma «nunca sobrescribir» acababa mandando el fichero a « (1)». El
-    escenario de prueba no puede depender de ese capricho de Windows. El
-    escenario vive en BASE_TMP (ruta ASCII y limpia del repo), no en el TEMP:
-    en Windows el TEMP es C:\\Users\\RUNNER~1\\... y ahí el alias 8.3 del
+    El nombre de los ficheros NO puede depender del alias 8.3 de Windows:
+    un nombre con ñ se translitera al recortarlo (CUMPL~1) y dos nombres
+    distintos pueden quedarse con la MISMA forma corta, con lo que la
+    comparación de Windows los ve iguales y la norma «nunca sobrescribir»
+    acaba mandando el fichero a « (1)». Por eso el escenario vive en
+    BASE_TMP (ruta ASCII y limpia del repo), no en el TEMP del sistema: en
+    Windows el TEMP es C:\\Users\\RUNNER~1\\... y ahí el alias 8.3 del
     usuario ya nos lió dos comparaciones en Actions.
     """
     carpeta = tmp_path / "Descargas"

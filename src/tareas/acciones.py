@@ -44,10 +44,11 @@ def _sondeo_de_mayusculas(carpeta: Path, sufijo: str) -> bool | None:
     try:
         return gemelo.exists()
     finally:
-        # EN EXFAT (el USB del aula) el sondeo deja DOS entradas (la creada y
-        # el gemelo, cada una con su inodo) y el unlink solo quita la que
-        # escribiste; quedan restos en el disco si no borras también el
-        # gemelo. En ext4/NTFS el gemelo no existe y el unlink no molesta.
+        # El unlink borra el NOMBRE, no el inodo: en NTFS y APFS insensible
+        # «sondeo» y «SONDEO» son el mismo nombre (existe uno) y borrar el
+        # segundo solo da FileNotFound (por eso el try/except). En exfat
+        # montado con ignore_case quedan DOS entradas con la misma forma
+        # corta y hay que quitar las dos para no dejar restos.
         for nombre in (sondeo, gemelo):
             try:
                 nombre.unlink()
