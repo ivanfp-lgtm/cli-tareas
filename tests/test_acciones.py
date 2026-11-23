@@ -62,6 +62,23 @@ def test_borrar_solo_los_viejos(descargas):
     assert (descargas / "nuevo.tmp").exists()
 
 
+def test_renombrar_un_nombre_que_cambia_en_todos_los_sistemas(descargas):
+    # «cumpleaños 2.png» → «foto-001.png»: el nombre base cambia de verdad,
+    # así que en cualquier SO (y con cualquier alias 8.3) se renombra y el
+    # nombre nuevo existe. Es la parte de la plantilla que Windows SÍ puede
+    # comprobar entera.
+    motor = motor_con(
+        tipo="renombrar",
+        filtro={"patron_nombre": "^cumpleaños 2$"},
+        plantilla="foto-{n:03}{ext}",
+    )
+    motor.ejecutar("prueba", descargas, simular=False)
+    # el único .png de la caja, con filtro patron_nombre: es el primero (n=1)
+    assert (descargas / "foto-001.png").exists()
+    assert not (descargas / "cumpleaños 2.png").exists()
+    assert not (descargas / "foto-002 (1).png").exists()
+
+
 def test_renombrar_con_plantilla(descargas):
     motor = motor_con(
         tipo="renombrar",
@@ -69,11 +86,17 @@ def test_renombrar_con_plantilla(descargas):
         plantilla="foto-{n:03}{ext}",
     )
     resultados = motor.ejecutar("prueba", descargas, simular=False)
-    assert (descargas / "foto-001.jpg").exists()
+    # «FOTO1.JPG» → foto-001.jpg. En Windows, renombrar UNICAMENTE de
+    # mayúsculas no se refleja: «foto-001.jpg» es el MISMO nombre que
+    # «FOTO1.JPG» y el rename se queda con el nombre que ya estaba escrito
+    # en el directorio (la prueba de mayúsculas de abajo sondea esa
+    # realidad). La norma que no puede romperse en NINGÚN SO es «nunca
+    # sobrescribir»: el fichero tiene que seguir ahí con UNO de los dos
+    # nombres (el viejo si el rename no se refleja) y
+    # « (1)» no tiene por qué aparecer, porque los nombres base no colisionan.
+    expecta = (descargas / "foto-001.jpg").exists() or (descargas / "FOTO1.JPG").exists()
+    assert expecta
     assert (descargas / "foto-002.png").exists()
-    # «FOTO1.JPG» → foto-001.jpg y «cumpleaños 2.png» → foto-002.png: son
-    # nombres BASE distintos, así que en cualquier SO caben los dos y no
-    # puede salir el sufijo « (1)».
     assert not (descargas / "foto-001 (1).jpg").exists()
     assert not (descargas / "foto-002 (1).png").exists()
 
